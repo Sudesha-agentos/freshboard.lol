@@ -28,12 +28,13 @@ Anyone can submit a listing with a **$1 minimum bid**. Anyone can outbid an exis
 7. No accounts, no login.
 
 ## Implemented (2026-02)
-- Backend endpoints: `/api/config`, `/api/reset-info`, `/api/board`, `/api/listings/{id}`, `/api/submit`, `/api/outbid`, `/api/payments/status/{session_id}`, `/api/webhook/stripe`.
-- MongoDB collections: `listings`, `payment_transactions` with idempotent paid-transaction application.
-- Frontend pages: `/` (Board with hero + countdown + marquee + tabs + category filter + ranked cards + empty state), `/payment/success`, `/payment/cancel`.
+- Backend endpoints: `/api/config`, `/api/reset-info`, `/api/board`, `/api/listings/{id}`, `/api/listings/{id}/click`, `/api/submit`, `/api/outbid`, `/api/activity`, `/api/stats`, `/api/top-today`, `/api/payments/status/{session_id}`, `/api/webhook/stripe`.
+- MongoDB collections: `listings` (now with `click_count`), `payment_transactions` with idempotent paid-transaction application.
+- Frontend pages: `/` (Board with hero + countdown + marquee + "Claim #1 for $X+1" hero widget + tabs + category filter + ranked cards + latest-activity sidebar + stats bar + empty state), `/product/:id` (detail with sticky bid sidebar, click tracking, description, visit button), `/payment/success`, `/payment/cancel`.
 - SubmissionModal doubles as outbid modal; category select (Shadcn), platform select, +$10 boost checkbox, total price display, redirect to Stripe hosted checkout.
-- Design: dark neon brutalist with sharp 1px borders, no rounded corners, glow on #1 rank, marquee ticker, Unbounded display type.
-- Backend testing: 18/18 checks passed (iteration_1.json).
+- Design: dark neon brutalist, sharp 1px borders, no rounded corners, glow on #1 rank, marquee ticker, Unbounded display type. Fully responsive: mobile-first stacking, horizontal-scroll category chips, compact header + countdown row on mobile.
+- Outbid.lol-style additions: activity feed (auto-refresh), stats/revenue counter, top-today hero widget, per-listing click tracking, time-ago timestamps, product detail pages with shareable URL.
+- Backend testing: 18/18 checks passed (iteration_1.json). Manual smoke test on new endpoints: /activity, /stats, /top-today, /click tracking all working.
 
 ## Backlog (prioritized)
 ### P1

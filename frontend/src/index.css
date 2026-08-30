@@ -93,6 +93,9 @@ body {
 .fb-marquee { display: flex; gap: 3rem; animation: fb-scroll 40s linear infinite; }
 @keyframes fb-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+
 .fb-scanlines {
   background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 3px);
 }

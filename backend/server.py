@@ -206,6 +206,102 @@ async def get_listing(listing_id: str):
     return _serialize(doc)
 
 
+@api.post("/listings/{listing_id}/click")
+async def track_click(listing_id: str):
+    try:
+        oid = ObjectId(listing_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    result = await db.listings.update_one({"_id": oid}, {"$inc": {"click_count": 1}})
+    if result.matched_count == 0:
+        raise HTTPException(404, "Listing not found")
+    return {"ok": True}
+
+
+@api.get("/activity")
+async def get_activity(limit: int = 20):
+    """Return latest paid bids (both new listings and outbids) as an activity feed."""
+    cursor = db.payment_transactions.find(
+        {"payment_status": "paid"}
+    ).sort("updated_at", -1).limit(min(max(limit, 1), 50))
+    out = []
+    async for txn in cursor:
+        md = txn.get("metadata") or {}
+        listing_id = txn.get("listing_id") or md.get("listing_id")
+        listing = None
+        if listing_id:
+            try:
+                listing = await db.listings.find_one({"_id": ObjectId(listing_id)})
+            except Exception:
+                listing = None
+        if not listing:
+            continue
+        # find current rank in current-day board (best effort)
+        rank = None
+        day_start = ist_day_start_utc().isoformat()
+        if listing.get("created_at_iso", "") >= day_start:
+            higher = await db.listings.count_documents({
+                "listing_type": listing["listing_type"],
+                "created_at_iso": {"$gte": day_start},
+                "current_bid": {"$gt": listing.get("current_bid", 0)},
+            })
+            rank = higher + 1
+        out.append({
+            "id": str(listing["_id"]),
+            "title": listing.get("title"),
+            "image_url": listing.get("image_url"),
+            "url": listing.get("url"),
+            "listing_type": listing.get("listing_type"),
+            "category": listing.get("category"),
+            "platform": listing.get("platform"),
+            "current_bid": listing.get("current_bid"),
+            "rank": rank,
+            "purpose": txn.get("purpose"),
+            "amount": txn.get("amount"),
+            "at": txn.get("updated_at"),
+        })
+    return {"items": out}
+
+
+@api.get("/stats")
+async def get_stats():
+    """Aggregate totals since launch (paid transactions only)."""
+    pipeline = [
+        {"$match": {"payment_status": "paid"}},
+        {"$group": {
+            "_id": None,
+            "total_revenue": {"$sum": "$amount"},
+            "count": {"$sum": 1},
+        }},
+    ]
+    agg = await db.payment_transactions.aggregate(pipeline).to_list(1)
+    total = float(agg[0]["total_revenue"]) if agg else 0.0
+    count = int(agg[0]["count"]) if agg else 0
+    launched_at = os.environ.get("APP_LAUNCHED_AT", "2026-02-01T00:00:00+00:00")
+    # count active listings today
+    day_start = ist_day_start_utc().isoformat()
+    active_today = await db.listings.count_documents({"created_at_iso": {"$gte": day_start}})
+    return {
+        "total_revenue": total,
+        "paid_count": count,
+        "active_today": active_today,
+        "launched_at": launched_at,
+    }
+
+
+@api.get("/top-today")
+async def top_today(limit: int = 3):
+    """Top-N listings by bid today (mixed products+socials)."""
+    day_start = ist_day_start_utc().isoformat()
+    cursor = db.listings.find(
+        {"created_at_iso": {"$gte": day_start}, "current_bid": {"$gt": 0}}
+    ).sort("current_bid", -1).limit(min(max(limit, 1), 10))
+    items = []
+    async for doc in cursor:
+        items.append(_serialize(doc))
+    return {"items": items}
+
+
 # ---------------------------------------------------------------------
 # Stripe payments
 # ---------------------------------------------------------------------
@@ -333,6 +429,7 @@ async def _apply_paid_transaction(session_id: str, session_metadata: Optional[di
             "current_bid": bid_amount,
             "boosted": add_boost,
             "boost_count": BOOST_REACH if add_boost else 0,
+            "click_count": 0,
             "created_at_iso": now,
             "last_bid_at_iso": now,
         }
