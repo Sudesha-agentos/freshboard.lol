@@ -3,22 +3,25 @@ import { fetchActivity } from "../lib/api";
 import { timeAgo, money } from "../lib/format";
 import { TrendingUp, Rocket } from "lucide-react";
 import { Link } from "react-router-dom";
+import useBoardSocket from "../lib/useBoardSocket";
 
 export default function ActivityFeed() {
   const [items, setItems] = useState([]);
 
+  const load = async () => {
+    try {
+      const data = await fetchActivity(12);
+      setItems(data.items || []);
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const data = await fetchActivity(12);
-        if (alive) setItems(data.items || []);
-      } catch { /* ignore */ }
-    };
     load();
-    const t = setInterval(load, 12000);
-    return () => { alive = false; clearInterval(t); };
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
   }, []);
+
+  useBoardSocket(() => { load(); });
 
   return (
     <aside data-testid="activity-feed" className="border border-[color:var(--fb-border)] bg-[color:var(--fb-surface)]">

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchTopToday } from "../lib/api";
 import { Rocket, ArrowUpRight, Flame } from "lucide-react";
 import { Link } from "react-router-dom";
+import useBoardSocket from "../lib/useBoardSocket";
 
 /**
  * Product-forward hero: features the current #1 as the star of the page.
@@ -11,18 +12,21 @@ export default function ProductHero({ onClaim, onLaunch }) {
   const [top, setTop] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const load = async () => {
+    try {
+      const data = await fetchTopToday(1);
+      setTop(data.items?.[0] || null);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
   useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const data = await fetchTopToday(1);
-        if (alive) { setTop(data.items?.[0] || null); setLoading(false); }
-      } catch { if (alive) setLoading(false); }
-    };
     load();
-    const t = setInterval(load, 8000);
-    return () => { alive = false; clearInterval(t); };
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
   }, []);
+
+  useBoardSocket(() => { load(); });
 
   if (loading) {
     return <div className="h-[300px]" />;

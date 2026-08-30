@@ -118,7 +118,7 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
         data-testid="submission-modal"
-        className="bg-[color:var(--fb-surface)] border border-[color:var(--fb-border)] text-white max-w-lg rounded-none"
+        className="bg-[color:var(--fb-surface)] border border-[color:var(--fb-border)] text-white w-[calc(100vw-1.5rem)] max-w-lg rounded-none max-h-[90vh] overflow-y-auto p-4 sm:p-6"
       >
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">
@@ -274,7 +274,7 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
             </div>
           </label>
 
-          <div className="flex items-center justify-between pt-2 border-t border-[color:var(--fb-border)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[color:var(--fb-border)]">
             <div>
               <div className="text-[10px] font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Total</div>
               <div data-testid="total-amount" className="font-display text-3xl text-white">${total.toFixed(2)}</div>

@@ -8,7 +8,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Annotated, Any, Literal
 
 import requests
-from fastapi import FastAPI, APIRouter, HTTPException, Request
+import asyncio
+from fastapi import FastAPI, APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -410,6 +411,53 @@ async def preview_url(payload: PreviewRequest):
 # ---------------------------------------------------------------------
 # Stripe payments
 # ---------------------------------------------------------------------
+class WSManager:
+    def __init__(self):
+        self.conns: set = set()
+        self.lock = asyncio.Lock()
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        async with self.lock:
+            self.conns.add(ws)
+
+    async def disconnect(self, ws: WebSocket):
+        async with self.lock:
+            self.conns.discard(ws)
+
+    async def broadcast(self, msg: dict):
+        async with self.lock:
+            targets = list(self.conns)
+        dead = []
+        for ws in targets:
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                dead.append(ws)
+        if dead:
+            async with self.lock:
+                for ws in dead:
+                    self.conns.discard(ws)
+
+
+ws_manager = WSManager()
+
+
+@app.websocket("/api/ws/board")
+async def ws_board(ws: WebSocket):
+    await ws_manager.connect(ws)
+    try:
+        # Send a hello then keep the connection alive.
+        await ws.send_json({"type": "hello", "at": now_iso()})
+        while True:
+            # Discard anything the client sends; used only as keep-alive
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(ws)
+    except Exception:
+        await ws_manager.disconnect(ws)
+
+
 def _stripe_from_request(request: Request) -> StripeCheckout:
     host_url = str(request.base_url)
     webhook_url = f"{host_url}api/webhook/stripe"
@@ -519,6 +567,8 @@ async def _apply_paid_transaction(session_id: str, session_metadata: Optional[di
     purpose = txn.get("purpose") or md.get("purpose")
     now = now_iso()
 
+    broadcast_payload = {"type": "board_update", "purpose": purpose, "at": now}
+
     if purpose == "new_listing":
         bid_amount = float(md.get("bid_amount", txn.get("amount", 0)))
         add_boost = md.get("add_boost") == "1"
@@ -539,6 +589,10 @@ async def _apply_paid_transaction(session_id: str, session_metadata: Optional[di
             "last_bid_at_iso": now,
         }
         result = await db.listings.insert_one(listing_doc)
+        broadcast_payload["listing_id"] = str(result.inserted_id)
+        broadcast_payload["listing_type"] = listing_doc["listing_type"]
+        broadcast_payload["title"] = listing_doc["title"]
+        broadcast_payload["current_bid"] = bid_amount
         await db.payment_transactions.update_one(
             {"session_id": session_id},
             {"$set": {
@@ -567,6 +621,8 @@ async def _apply_paid_transaction(session_id: str, session_metadata: Optional[di
             if inc:
                 u["$inc"] = inc
             await db.listings.update_one({"_id": oid}, u)
+            broadcast_payload["listing_id"] = str(oid)
+            broadcast_payload["current_bid"] = bid_amount
         await db.payment_transactions.update_one(
             {"session_id": session_id},
             {"$set": {
@@ -575,6 +631,12 @@ async def _apply_paid_transaction(session_id: str, session_metadata: Optional[di
                 "updated_at": now,
             }},
         )
+
+    # Push to any connected clients (best effort, non-blocking)
+    try:
+        await ws_manager.broadcast(broadcast_payload)
+    except Exception as e:
+        logging.info("ws broadcast failed: %s", e)
 
 
 @api.get("/payments/status/{session_id}")

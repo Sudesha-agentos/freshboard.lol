@@ -8,6 +8,7 @@ import ActivityFeed from "../components/ActivityFeed";
 import ProductHero from "../components/ProductHero";
 import StatsBar from "../components/StatsBar";
 import WinnersRibbon from "../components/WinnersRibbon";
+import useBoardSocket from "../lib/useBoardSocket";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Rocket, Plus, RefreshCw } from "lucide-react";
 
@@ -34,9 +35,11 @@ export default function Board() {
 
   useEffect(() => {
     load();
-    const t = setInterval(() => load(false), 8000);
+    const t = setInterval(() => load(false), 30000);
     return () => clearInterval(t);
   }, [load]);
+
+  useBoardSocket(() => { load(false); });
 
   const openSubmit = (type) => setModal({ open: true, mode: "submit", target: null, defaultType: type });
   const openOutbid = (item) => setModal({ open: true, mode: "outbid", target: item, defaultType: item.listing_type });
@@ -112,14 +115,14 @@ export default function Board() {
               </div>
 
               {tab === "product" && (
-                <div className="mb-4 md:mb-6 -mx-4 px-4 md:mx-0 md:px-0 overflow-x-auto scrollbar-none">
-                  <div className="flex items-center gap-2 min-w-max pb-2">
+                <div className="mb-4 md:mb-6">
+                  <div data-testid="category-chips" className="flex items-center gap-2 flex-wrap">
                     {["All", ...config.categories].map(c => (
                       <button
                         key={c}
                         data-testid={`cat-${c}`}
                         onClick={() => setCategory(c)}
-                        className={`text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 border whitespace-nowrap transition-colors ${category === c ? "border-[color:var(--fb-pink)] text-[color:var(--fb-pink)]" : "border-[color:var(--fb-border)] text-[color:var(--fb-text-2)] hover:text-white"}`}
+                        className={`text-[10px] font-mono uppercase tracking-widest px-2.5 sm:px-3 py-1.5 border whitespace-nowrap transition-colors ${category === c ? "border-[color:var(--fb-pink)] text-[color:var(--fb-pink)]" : "border-[color:var(--fb-border)] text-[color:var(--fb-text-2)] hover:text-white"}`}
                       >
                         {c}
                       </button>
