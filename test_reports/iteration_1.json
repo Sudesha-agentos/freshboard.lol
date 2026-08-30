@@ -1,0 +1,31 @@
+{
+  "summary": "FreshBoard.lol backend smoke tests: 18/18 checks passed. Verified config, reset-info, board shape+ranking+category filter+IST daily-reset, /submit validations (invalid category/platform/URL/bid<1), /submit product+social valid returning Stripe checkout_url, /submit with add_boost stores amount=bid+10 in payment_transactions, /outbid validations and valid flow, /payments/status shape (pending), and /webhook/stripe rejects invalid signature.",
+  "tested_scope": ["backend", "integration"],
+  "passed": [
+    "GET /api/config (12 categories, min_bid=1.0, boost_price=10.0, boost_reach=5)",
+    "GET /api/reset-info (IST UTC+5:30, seconds_until_reset>0)",
+    "GET /api/board initial shape (products, socials, reset nested)",
+    "POST /api/submit product valid returns checkout_url + session_id",
+    "POST /api/submit social (platform=x) valid",
+    "POST /api/submit rejects invalid category (400)",
+    "POST /api/submit rejects missing platform for social (400/422)",
+    "POST /api/submit rejects bid_amount < 1.0 (422)",
+    "POST /api/submit rejects malformed URL (400)",
+    "POST /api/submit add_boost=true stores amount=bid+10 in payment_transactions with metadata.add_boost='1'",
+    "POST /api/outbid valid (bid > current) returns checkout_url",
+    "POST /api/outbid rejects bid <= current_bid (400)",
+    "POST /api/outbid rejects invalid listing_id string (400)",
+    "POST /api/outbid rejects nonexistent ObjectId (404)",
+    "GET /api/payments/status/{session_id} returns pending shape correctly",
+    "Board ranking: P-High(50) ranked before P-Low(5); rank field assigned per section",
+    "Board category filter: ?category=SaaS returns only SaaS products",
+    "Daily-reset filter: listing with created_at_iso 2 days ago excluded from /board",
+    "POST /api/webhook/stripe rejects invalid signature with 400"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "not tested (skipped per request)"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "Stripe checkout completion cannot be automated (requires hosted UI); pending status accepted per instructions. Test data inserted into MongoDB was cleaned up via _test_marker filter and test-title txn filter."
+}

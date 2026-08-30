@@ -1,0 +1,110 @@
+{
+  "project_context": {
+    "name": "FreshBoard.lol",
+    "type": "hybrid_fullstack",
+    "vibe": "Dark, neon, brutalist, meme-y, competitive-auction. A high-energy financial ticker meets a rebellious product launch board.",
+    "theme": "dark"
+  },
+  "typography": {
+    "primary": {
+      "family": "'Unbounded', sans-serif",
+      "weights": ["400", "700", "900"],
+      "usage": "Hero headers, Countdown Timer, Rank Numbers (#1, #2), and massive Bid Amounts ($150). Apply tracking-tighter."
+    },
+    "secondary": {
+      "family": "'Outfit', sans-serif",
+      "weights": ["500", "700"],
+      "usage": "Card titles, product names, section headers."
+    },
+    "mono": {
+      "family": "'JetBrains Mono', monospace",
+      "weights": ["400", "700"],
+      "usage": "Taglines, category chips, standard body text, input fields, data labels, ticker tapes."
+    },
+    "import_instructions": "Import 'Unbounded', 'Outfit', and 'JetBrains Mono' from Google Fonts."
+  },
+  "colors": {
+    "background": {
+      "main": "#050505",
+      "surface": "#121212",
+      "surface_elevated": "#1C1C1C",
+      "description": "Deepest void black. No pure whites or grays without intention."
+    },
+    "text": {
+      "primary": "#F8FAFC",
+      "secondary": "#A1A1AA",
+      "muted": "#52525B"
+    },
+    "brand_accents": {
+      "laser_green": "#22C55E",
+      "cyber_yellow": "#EAB308",
+      "hot_pink": "#EC4899",
+      "electric_cyan": "#06B6D4"
+    },
+    "semantic": {
+      "money": "#22C55E",
+      "outbid_action": "#EC4899",
+      "rank_one": "#EAB308",
+      "border": "#262626"
+    },
+    "forbidden_colors": ["#7351B7", "#1B93A4", "Any Purple", "Generic SaaS Blue", "Soft Gradients"]
+  },
+  "visual_enhancers": {
+    "borders": "1px sharp, solid borders (border-[#262626]). Emphasize the grid layout heavily, like a technical terminal.",
+    "shadows": "Hard, flat neo-brutalist shadows if needed (e.g., 4px 4px 0px #EC4899), or glowing neon drop-shadows (drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]) for the #1 rank.",
+    "textures": "CSS noise overlay on the main background to eliminate digital flatness.",
+    "surfaces": "Use Retro-Futurism 'Terminal' look and Grid Borders patterns. Flat solid surfaces, NO soft glassmorphism unless strictly for the sticky nav."
+  },
+  "grids_and_layouts": {
+    "spacing": "Generous inner padding for structural elements (p-6, p-8), but tightly packed grid items (gap-0 or gap-4 with borders).",
+    "leaderboard_grid": "The Bento Protocol (High Density). Desktop: grid-cols-1 md:grid-cols-2 lg:grid-cols-3. The #1 Ranked Card MUST span col-span-full or at least 2 columns and be visually distinct.",
+    "hero_section": "Massive typography. A centered or heavily asymmetric countdown timer displaying 'RESET IN 04:12:30'.",
+    "marquee": "Use a fast-moving Kinetic Texture marquee (react-fast-marquee) across the top or bottom showing live fictional/recent bids."
+  },
+  "motion_and_interactions": {
+    "hover_states": "Hovering on a card should slightly lift it (-translate-y-1) and change its border color to an accent (e.g., hover:border-hot_pink).",
+    "buttons": "Pill-shaped or sharp rectangular buttons. On active/click, they should compress (scale-95).",
+    "outbid_cta": "The Outbid button must be highly visible on every card, using a striking contrasting color (like Hot Pink or Cyber Yellow) with JetBrains Mono font."
+  },
+  "component_instructions": {
+    "tech_stack": "React (Vite), Tailwind CSS, Framer Motion, Lucide React (or Phosphor Icons), Radix/Shadcn.",
+    "file_extension": "Use .js and .jsx ONLY. Do NOT use .tsx or .ts files.",
+    "shadcn": "Heavily strip standard Shadcn styles. Remove the standard border-radius, make inputs completely square with 1px borders. Use Sonner for toasts (dark mode, neon borders).",
+    "forms": "Use Shadcn components for Dialogs (Outbid Modal) and Forms (Submission Modal). Inputs must have high focus contrast (focus:ring-2 focus:ring-hot_pink).",
+    "tabs": "The Products vs. Social Promotions switch should be massive, blocky tabs, acting like segmented controls in a financial app."
+  },
+  "media_and_images": {
+    "strategy": "Images should feel dark, edgy, and high-tech.",
+    "thumbnails": {
+      "products": [
+        "https://images.unsplash.com/photo-1709653574992-205e5c314a49?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwxfHxuZW9uJTIwYWJzdHJhY3QlMjB0ZWNofGVufDB8fHxibGFja3wxNzg4MTE3MjU3fDA&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/photo-1631477076114-9123f721b9dc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwxfHwzZCUyMGdlb21ldHJ5JTIwbWluaW1hbHxlbnwwfHx8YmxhY2t8MTc4ODExNzI3NXww&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/photo-1640346876473-f76a73c71539?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwzfHwzZCUyMGdlb21ldHJ5JTIwbWluaW1hbHxlbnwwfHx8YmxhY2t8MTc4ODExNzI3NXww&ixlib=rb-4.1.0&q=85"
+      ],
+      "social_profiles": [
+        "https://images.unsplash.com/photo-1616705671472-204bf4cf5e5c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHw0fHxjeWJlcnB1bmslMjBwb3J0cmFpdHxlbnwwfHx8YmxhY2t8MTc4ODExNzI1N3ww&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/photo-1650255612142-67f1de1f2d01?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwxfHxjeWJlcnB1bmslMjBwb3J0cmFpdHxlbnwwfHx8YmxhY2t8MTc4ODExNzI1N3ww&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/photo-1650255612136-c4f048a49624?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwyfHxjeWJlcnB1bmslMjBwb3J0cmFpdHxlbnwwfHx8YmxhY2t8MTc4ODExNzI1N3ww&ixlib=rb-4.1.0&q=85"
+      ],
+      "placeholders": [
+        "https://images.unsplash.com/photo-1650800543888-9ef964fc33d2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHw0fHwzZCUyMGdlb21ldHJ5JTIwbWluaW1hbHxlbnwwfHx8YmxhY2t8MTc4ODExNzI3NXww&ixlib=rb-4.1.0&q=85"
+      ]
+    },
+    "icons_library": "phosphor-icons/react or lucide-react. Keep them sharp and consistent."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure the bright neon text meets minimum 4.5:1 ratio against the black background.",
+    "testing_attributes": "All interactive elements (buttons, tabs, inputs, modals, outbid CTAs) MUST have a descriptive 'data-testid' attribute (e.g., data-testid='outbid-button-rank-1').",
+    "reduced_motion": "Wrap complex animations in a media query or framer-motion's safe environment to respect prefers-reduced-motion."
+  },
+  "universal_guidelines_for_main_agent": {
+    "1": "You tend to converge toward generic, 'on distribution' outputs. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "2": "Create depth through layered design elements with z-index hierarchy.",
+    "3": "You MUST NOT apply universal transitions (e.g., transition: all). Add specific transitions instead.",
+    "4": "You MUST NOT center align the entire app container.",
+    "5": "DO NOT use complete transparent backgrounds for sticky headers or dropdowns. Always provide a solid base or blurred background.",
+    "6": "NEVER use placeholder text (like 'Company Logo' or generic gray squares) for images; use the provided image URLs.",
+    "7": "Do not build UI components from scratch if Shadcn equivalents exist (like Select, Dialog).",
+    "8": "Use .js extensions for all files. No TypeScript."
+  }
+}
