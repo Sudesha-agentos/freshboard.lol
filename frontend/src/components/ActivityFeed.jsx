@@ -41,10 +41,9 @@ export default function ActivityFeed() {
               <img src={it.image_url} alt="" className="w-8 h-8 border border-[color:var(--fb-border)] object-cover shrink-0" loading="lazy" />
               <div className="min-w-0 flex-1">
                 <div className="text-sm text-white font-alt truncate">{it.title}</div>
-                <div className="text-[10px] font-mono text-[color:var(--fb-text-2)] flex items-center gap-1.5 flex-wrap">
-                  {it.rank && <span className="text-[color:var(--fb-pink)]">#{it.rank}</span>}
-                  <span className="text-[color:var(--fb-green)]">{money(it.current_bid)}</span>
-                  <span>·</span>
+                <div className="text-[10px] font-mono text-[color:var(--fb-muted)] flex items-center gap-1.5 flex-wrap">
+                  {it.rank && <span className="text-[color:var(--fb-text-2)]">#{it.rank}</span>}
+                  {it.rank && <span>·</span>}
                   <span>
                     {it.purpose === "outbid" ? (
                       <span className="inline-flex items-center gap-0.5"><TrendingUp size={9} /> outbid</span>
@@ -52,6 +51,8 @@ export default function ActivityFeed() {
                       <span className="inline-flex items-center gap-0.5"><Rocket size={9} /> listed</span>
                     )}
                   </span>
+                  <span>·</span>
+                  <span className="text-[color:var(--fb-text-2)]">{money(it.current_bid)}</span>
                   <span>·</span>
                   <span>{timeAgo(it.at)}</span>
                 </div>

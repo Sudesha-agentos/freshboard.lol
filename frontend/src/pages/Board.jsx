@@ -5,10 +5,10 @@ import Marquee from "../components/Marquee";
 import ListingCard from "../components/ListingCard";
 import SubmissionModal from "../components/SubmissionModal";
 import ActivityFeed from "../components/ActivityFeed";
-import ClaimHero from "../components/ClaimHero";
+import ProductHero from "../components/ProductHero";
 import StatsBar from "../components/StatsBar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
-import { Rocket, Radio, Flame, Plus, RefreshCw } from "lucide-react";
+import { Rocket, Plus, RefreshCw } from "lucide-react";
 
 export default function Board() {
   const [tab, setTab] = useState("product");
@@ -71,45 +71,9 @@ export default function Board() {
 
       <Marquee />
 
-      {/* Hero */}
-      <section className="max-w-7xl mx-auto px-4 md:px-8 pt-8 md:pt-16 pb-6 md:pb-8">
-        <div className="grid md:grid-cols-2 gap-6 md:gap-8 items-end">
-          <div>
-            <div className="inline-flex items-center gap-2 border border-[color:var(--fb-border)] px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-[color:var(--fb-cyan)] mb-5 md:mb-6">
-              <Flame size={12} /> Rank is bought, not voted.
-            </div>
-            <h1 className="font-display text-4xl sm:text-5xl md:text-7xl font-black text-white leading-[0.9] tracking-tighter">
-              Pay a dollar. <br/>
-              <span className="text-[color:var(--fb-pink)]">Take #1</span>. <br/>
-              Get outbid.
-            </h1>
-            <p className="font-mono text-[color:var(--fb-text-2)] mt-5 md:mt-6 max-w-md text-sm md:text-base">
-              A Product Hunt–style board where dollars decide the order. Board wipes clean every night at midnight IST.
-              No accounts, no votes, no drama — just bids.
-            </p>
-            <div className="flex flex-wrap gap-3 mt-6 md:mt-8">
-              <button data-testid="hero-submit-product" onClick={() => openSubmit("product")} className="fb-btn-primary inline-flex items-center gap-2">
-                <Rocket size={16} /> Launch a Product
-              </button>
-              <button data-testid="hero-submit-social" onClick={() => openSubmit("social")} className="fb-btn-ghost inline-flex items-center gap-2">
-                <Radio size={16} /> Promote a Post
-              </button>
-            </div>
-          </div>
-          <div className="md:justify-self-end">
-            <Countdown variant="hero" />
-            <div className="mt-4 flex gap-2 flex-wrap">
-              <Stat label="Min bid" value={`$${config.min_bid ?? 1}`} />
-              <Stat label="Boost" value={`$${config.boost_price ?? 10}`} accent="cyan" />
-              <Stat label="Live listings" value={(board.products.length + board.socials.length).toString()} accent="green" />
-            </div>
-          </div>
-        </div>
-
-        {/* Claim #1 hero widget */}
-        <div className="mt-8 md:mt-10">
-          <ClaimHero onClaim={claimTop} />
-        </div>
+      {/* Product-forward hero (centered, short) */}
+      <section className="max-w-7xl mx-auto px-4 md:px-8">
+        <ProductHero onClaim={claimTop} onLaunch={() => openSubmit("product")} />
       </section>
 
       {/* Board Tabs + Activity Sidebar */}
@@ -195,17 +159,6 @@ export default function Board() {
         target={modal.target}
         defaultType={modal.defaultType}
       />
-    </div>
-  );
-}
-
-function Stat({ label, value, accent }) {
-  const colors = { cyan: "var(--fb-cyan)", green: "var(--fb-green)", yellow: "var(--fb-yellow)" };
-  const c = colors[accent] || "var(--fb-text)";
-  return (
-    <div className="border border-[color:var(--fb-border)] px-3 py-2 bg-black/40 min-w-[80px] sm:min-w-[92px]">
-      <div className="text-[9px] font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">{label}</div>
-      <div className="font-display text-lg sm:text-xl font-bold" style={{ color: c }}>{value}</div>
     </div>
   );
 }
