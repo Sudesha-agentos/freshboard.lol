@@ -7,6 +7,7 @@ import SubmissionModal from "../components/SubmissionModal";
 import ActivityFeed from "../components/ActivityFeed";
 import ProductHero from "../components/ProductHero";
 import StatsBar from "../components/StatsBar";
+import WinnersRibbon from "../components/WinnersRibbon";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Rocket, Plus, RefreshCw } from "lucide-react";
 
@@ -72,7 +73,8 @@ export default function Board() {
       <Marquee />
 
       {/* Product-forward hero (centered, short) */}
-      <section className="max-w-7xl mx-auto px-4 md:px-8">
+      <section className="max-w-7xl mx-auto px-4 md:px-8 pt-6 md:pt-10">
+        <WinnersRibbon />
         <ProductHero onClaim={claimTop} onLaunch={() => openSubmit("product")} />
       </section>
 

@@ -2,10 +2,12 @@ import os
 import logging
 import uuid
 import re
+from urllib.parse import urlparse
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Annotated, Any, Literal
 
+import requests
 from fastapi import FastAPI, APIRouter, HTTPException, Request
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -300,6 +302,109 @@ async def top_today(limit: int = 3):
     async for doc in cursor:
         items.append(_serialize(doc))
     return {"items": items}
+
+
+@api.get("/yesterday-top")
+async def yesterday_top():
+    """Yesterday's IST-day #1 listing (winner of the last completed day)."""
+    now_ist = datetime.now(IST)
+    today_start_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start_ist = today_start_ist - timedelta(days=1)
+    y_start = yesterday_start_ist.astimezone(timezone.utc).isoformat()
+    y_end = today_start_ist.astimezone(timezone.utc).isoformat()
+    doc = await db.listings.find_one(
+        {"created_at_iso": {"$gte": y_start, "$lt": y_end}, "current_bid": {"$gt": 0}},
+        sort=[("current_bid", -1)],
+    )
+    if not doc:
+        return {"item": None}
+    return {"item": _serialize(doc)}
+
+
+class PreviewRequest(BaseModel):
+    url: str
+
+
+_TITLE_RE = re.compile(r"<title[^>]*>([^<]+)</title>", re.IGNORECASE | re.DOTALL)
+_META_RE = re.compile(
+    r"""<meta\s+[^>]*?(?:property|name)\s*=\s*['"]([^'"]+)['"][^>]*?content\s*=\s*['"]([^'"]*)['"][^>]*?/?>""",
+    re.IGNORECASE,
+)
+_META_RE_ALT = re.compile(
+    r"""<meta\s+[^>]*?content\s*=\s*['"]([^'"]*)['"][^>]*?(?:property|name)\s*=\s*['"]([^'"]+)['"][^>]*?/?>""",
+    re.IGNORECASE,
+)
+
+
+def _clean(text: str, max_len: int) -> str:
+    if not text:
+        return ""
+    t = re.sub(r"\s+", " ", text).strip()
+    return t[:max_len]
+
+
+@api.post("/preview")
+async def preview_url(payload: PreviewRequest):
+    """Fetch OpenGraph metadata for a URL (title, tagline, image)."""
+    url = payload.url.strip()
+    if not URL_REGEX.match(url):
+        raise HTTPException(400, "Invalid URL")
+
+    parsed = urlparse(url)
+    domain = parsed.netloc
+
+    title = ""
+    tagline = ""
+    image_url = ""
+
+    try:
+        r = requests.get(
+            url,
+            timeout=6,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; FreshBoardPreviewBot/1.0)",
+                "Accept": "text/html,application/xhtml+xml",
+            },
+            allow_redirects=True,
+        )
+        html = r.text if r.status_code < 400 else ""
+    except Exception as e:
+        logging.info("preview fetch failed: %s", e)
+        html = ""
+
+    if html:
+        meta = {}
+        for m in _META_RE.finditer(html):
+            k, v = m.group(1).lower(), m.group(2)
+            meta.setdefault(k, v)
+        for m in _META_RE_ALT.finditer(html):
+            v, k = m.group(1), m.group(2).lower()
+            meta.setdefault(k, v)
+
+        title = meta.get("og:title") or meta.get("twitter:title") or ""
+        if not title:
+            tm = _TITLE_RE.search(html)
+            if tm:
+                title = tm.group(1)
+        tagline = meta.get("og:description") or meta.get("twitter:description") or meta.get("description") or ""
+        image_url = meta.get("og:image") or meta.get("twitter:image") or ""
+
+        # Absolute-ize image URL
+        if image_url and image_url.startswith("//"):
+            image_url = f"{parsed.scheme}:{image_url}"
+        elif image_url and image_url.startswith("/"):
+            image_url = f"{parsed.scheme}://{parsed.netloc}{image_url}"
+
+    if not image_url and domain:
+        image_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=256"
+
+    return {
+        "title": _clean(title, 100) or domain,
+        "tagline": _clean(tagline, 140),
+        "image_url": image_url,
+        "domain": domain,
+    }
+
 
 
 # ---------------------------------------------------------------------

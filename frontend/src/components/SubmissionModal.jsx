@@ -1,12 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "./ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "./ui/select";
-import { Zap, Rocket, TrendingUp } from "lucide-react";
-import { submitListing, outbidListing, fetchConfig } from "../lib/api";
+import { Zap, Rocket, TrendingUp, Sparkles, Loader2 } from "lucide-react";
+import { submitListing, outbidListing, fetchConfig, previewUrl } from "../lib/api";
 import { toast } from "sonner";
 
 const PLACEHOLDER_IMG = "https://images.unsplash.com/photo-1650800543888-9ef964fc33d2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHw0fHwzZCUyMGdlb21ldHJ5JTIwbWluaW1hbHxlbnwwfHx8YmxhY2t8MTc4ODExNzI3NXww&ixlib=rb-4.1.0&q=85";
@@ -21,6 +21,9 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
   const [bid, setBid] = useState("1");
   const [boost, setBoost] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const previewedRef = useRef("");
+  const debounceRef = useRef(null);
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {});
@@ -35,8 +38,34 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
       setListingType(defaultType);
       setForm({ title: "", tagline: "", description: "", url: "", image_url: "", category: config.categories?.[0] || "", platform: "x" });
       setBoost(false);
+      previewedRef.current = "";
     }
   }, [mode, target, open, config, defaultType]);
+
+  const runPreview = async (url) => {
+    const clean = (url || "").trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(clean)) return;
+    if (previewedRef.current === clean) return;
+    previewedRef.current = clean;
+    setPreviewing(true);
+    try {
+      const data = await previewUrl(clean);
+      setForm(f => ({
+        ...f,
+        title: f.title || data.title || "",
+        tagline: f.tagline || data.tagline || "",
+        image_url: f.image_url || data.image_url || "",
+      }));
+    } catch { /* silent — user can fill manually */ }
+    finally { setPreviewing(false); }
+  };
+
+  const onUrlChange = (e) => {
+    const v = e.target.value;
+    setForm(f => ({ ...f, url: v }));
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => runPreview(v), 600);
+  };
 
   const update = (k) => (e) => setForm(f => ({ ...f, [k]: e.target?.value ?? e }));
 
@@ -126,16 +155,51 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
           {!isOutbid && (
             <>
               <div>
+                <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)] flex items-center gap-2">
+                  URL (external link)
+                  {previewing && (
+                    <span className="inline-flex items-center gap-1 text-[color:var(--fb-cyan)] normal-case tracking-normal">
+                      <Loader2 size={10} className="animate-spin" /> fetching…
+                    </span>
+                  )}
+                </label>
+                <input
+                  data-testid="input-url"
+                  className="fb-input mt-1"
+                  value={form.url}
+                  onChange={onUrlChange}
+                  onBlur={() => runPreview(form.url)}
+                  placeholder="https://your-product.com"
+                  required
+                />
+                <p className="mt-1 text-[10px] font-mono text-[color:var(--fb-muted)] flex items-center gap-1">
+                  <Sparkles size={10} className="text-[color:var(--fb-cyan)]" />
+                  paste your link — we'll auto-fill title, tagline, and thumbnail
+                </p>
+              </div>
+
+              {form.image_url && (
+                <div className="flex items-center gap-3 p-2 border border-[color:var(--fb-border)] bg-black/40" data-testid="preview-card">
+                  <img
+                    src={form.image_url}
+                    alt=""
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    className="w-12 h-12 object-cover border border-[color:var(--fb-border)] shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-white truncate">{form.title || "—"}</div>
+                    <div className="text-[10px] font-mono text-[color:var(--fb-text-2)] truncate">{form.tagline || "no tagline"}</div>
+                  </div>
+                </div>
+              )}
+
+              <div>
                 <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Title</label>
                 <input data-testid="input-title" className="fb-input mt-1" value={form.title} onChange={update("title")} required maxLength={100} />
               </div>
               <div>
                 <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Tagline</label>
                 <input data-testid="input-tagline" className="fb-input mt-1" value={form.tagline} onChange={update("tagline")} required maxLength={140} />
-              </div>
-              <div>
-                <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">URL (external link)</label>
-                <input data-testid="input-url" className="fb-input mt-1" value={form.url} onChange={update("url")} placeholder="https://..." required />
               </div>
               <div>
                 <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Thumbnail image URL <span className="opacity-60">(optional)</span></label>
