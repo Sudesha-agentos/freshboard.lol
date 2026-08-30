@@ -2,6 +2,7 @@ import os
 import logging
 import uuid
 import re
+import secrets
 from urllib.parse import urlparse
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -10,11 +11,21 @@ from typing import Optional, List, Annotated, Any, Literal
 import requests
 import asyncio
 from fastapi import FastAPI, APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, ConfigDict, BeforeValidator, HttpUrl
 from bson import ObjectId
+
+from share_verify import (
+    SHARE_TARGETS,
+    POST_TARGETS,
+    fixture_html,
+    is_crawler_ua,
+    test_fixtures_enabled,
+    verify_post,
+)
 
 from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout,
@@ -93,7 +104,19 @@ class SubmitPayload(BaseModel):
 
 
 class ShareRequest(BaseModel):
-    target: Literal["x", "linkedin", "reddit", "facebook", "whatsapp", "copy"]
+    target: Literal["x", "linkedin", "reddit", "facebook", "whatsapp"]
+    post_url: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ShareStartRequest(BaseModel):
+    listing_id: str
+    target: Literal["x", "linkedin", "reddit", "facebook", "whatsapp"]
+    origin: Optional[str] = None
+
+
+class ShareVerifyRequest(BaseModel):
+    token: str = Field(min_length=6, max_length=80)
+    post_url: Optional[str] = Field(default=None, max_length=2000)
 
 
 class OutbidPayload(BaseModel):
@@ -136,6 +159,13 @@ def validate_url(u: str) -> str:
     return u.strip()
 
 
+def client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for") or ""
+    if xff:
+        return xff.split(",")[0].strip() or "unknown"
+    return request.client.host if request.client else "unknown"
+
+
 # ---------------------------------------------------------------------
 # App / router
 # ---------------------------------------------------------------------
@@ -157,7 +187,7 @@ async def get_config():
         "boost_reach": BOOST_REACH,
         "credits_per_share": CREDITS_PER_SHARE,
         "welcome_credits": WELCOME_CREDITS,
-        "share_targets": ["x", "linkedin", "reddit", "facebook", "whatsapp", "copy"],
+        "share_targets": list(SHARE_TARGETS),
     }
 
 
@@ -183,7 +213,7 @@ async def get_board(category: Optional[str] = None):
     """Return today's active listings, ranked by bid, grouped by section."""
     day_start = ist_day_start_utc().isoformat()
     query = {"created_at_iso": {"$gte": day_start}, "current_bid": {"$gt": 0}}
-    cursor = db.listings.find(query).sort("current_bid", -1)
+    cursor = db.listings.find(query).sort([("current_bid", -1), ("last_bid_at_iso", -1)])
     products, socials = [], []
     rank_p, rank_s = 0, 0
     async for doc in cursor:
@@ -203,6 +233,41 @@ async def get_board(category: Optional[str] = None):
         "socials": socials,
         "reset": await reset_info(),
     }
+
+
+@api.get("/companies")
+async def search_companies(q: Optional[str] = None, limit: int = 20):
+    """Today's listings for the share-on-behalf typeahead. Exact title matches first."""
+    day_start = ist_day_start_utc().isoformat()
+    query: dict = {"created_at_iso": {"$gte": day_start}}
+    needle = (q or "").strip()
+    if needle:
+        query["title"] = {"$regex": re.escape(needle), "$options": "i"}
+    limit = min(max(limit, 1), 50)
+    cursor = db.listings.find(query).sort("current_bid", -1).limit(limit)
+    items = []
+    async for doc in cursor:
+        items.append({
+            "id": str(doc["_id"]),
+            "title": doc.get("title"),
+            "image_url": doc.get("image_url"),
+            "credits": float(doc.get("current_bid", 0)),
+            "listing_type": doc.get("listing_type"),
+            "category": doc.get("category"),
+        })
+    if needle:
+        low = needle.lower()
+
+        def _rank(it):
+            t = (it.get("title") or "").lower()
+            if t == low:
+                return (0, -it["credits"])
+            if t.startswith(low):
+                return (1, -it["credits"])
+            return (2, -it["credits"])
+
+        items.sort(key=_rank)
+    return {"items": items}
 
 
 @api.get("/listings/{listing_id}")
@@ -268,10 +333,15 @@ async def get_activity(limit: int = 20):
             continue
         rank = None
         if listing.get("created_at_iso", "") >= day_start:
+            bid = listing.get("current_bid", 0)
+            last = listing.get("last_bid_at_iso") or ""
             higher = await db.listings.count_documents({
                 "listing_type": listing["listing_type"],
                 "created_at_iso": {"$gte": day_start},
-                "current_bid": {"$gt": listing.get("current_bid", 0)},
+                "$or": [
+                    {"current_bid": {"$gt": bid}},
+                    {"current_bid": bid, "last_bid_at_iso": {"$gt": last}},
+                ],
             })
             rank = higher + 1
         out.append({
@@ -316,7 +386,7 @@ async def top_today(limit: int = 3):
     day_start = ist_day_start_utc().isoformat()
     cursor = db.listings.find(
         {"created_at_iso": {"$gte": day_start}, "current_bid": {"$gt": 0}}
-    ).sort("current_bid", -1).limit(min(max(limit, 1), 10))
+    ).sort([("current_bid", -1), ("last_bid_at_iso", -1)]).limit(min(max(limit, 1), 10))
     items = []
     async for doc in cursor:
         items.append(_serialize(doc))
@@ -333,7 +403,7 @@ async def yesterday_top():
     y_end = today_start_ist.astimezone(timezone.utc).isoformat()
     doc = await db.listings.find_one(
         {"created_at_iso": {"$gte": y_start, "$lt": y_end}, "current_bid": {"$gt": 0}},
-        sort=[("current_bid", -1)],
+        sort=[("current_bid", -1), ("last_bid_at_iso", -1)],
     )
     if not doc:
         return {"item": None}
@@ -563,35 +633,61 @@ async def submit_listing(payload: SubmitPayload, request: Request):
     }
 
 
-@api.post("/listings/{listing_id}/share")
-async def share_listing(listing_id: str, payload: ShareRequest, request: Request):
-    """Register a share: +CREDITS_PER_SHARE credits per (listing, target, ip) — once each."""
-    try:
-        oid = ObjectId(listing_id)
-    except Exception:
-        raise HTTPException(400, "Invalid id")
-    doc = await db.listings.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(404, "Listing not found")
+def _share_template(title: str, track_url: Optional[str] = None) -> str:
+    line = f"Check out {title} in freshboard.lol"
+    if track_url:
+        return f"{line} {track_url}"
+    return line
 
-    ip = request.client.host if request.client else "unknown"
-    now = now_iso()
+
+async def _apply_credit(
+    listing_id: str,
+    oid: ObjectId,
+    doc: dict,
+    target: str,
+    sharer_ip: str,
+    *,
+    post_url: Optional[str] = None,
+    post_url_norm: Optional[str] = None,
+    token: Optional[str] = None,
+    verify_method: str = "post_fetch",
+    visitor_ip: Optional[str] = None,
+) -> dict:
+    """Idempotent +5 after a share has already been proven."""
     existing = await db.share_events.find_one({
         "listing_id": listing_id,
-        "target": payload.target,
-        "ip": ip,
+        "target": target,
+        "ip": sharer_ip,
     })
     if existing:
         return {
             "credited": False,
             "credits": float(doc.get("current_bid", 0)),
             "reason": "already_shared",
+            "listing_id": listing_id,
         }
 
+    if post_url_norm:
+        used = await db.share_events.find_one({"post_url_norm": post_url_norm})
+        if used:
+            return {
+                "credited": False,
+                "credits": float(doc.get("current_bid", 0)),
+                "reason": "post_already_used",
+                "listing_id": listing_id,
+            }
+
+    now = now_iso()
     await db.share_events.insert_one({
         "listing_id": listing_id,
-        "target": payload.target,
-        "ip": ip,
+        "title": doc.get("title") or "",
+        "target": target,
+        "ip": sharer_ip,
+        "visitor_ip": visitor_ip,
+        "post_url": (post_url or "").strip() or None,
+        "post_url_norm": post_url_norm,
+        "token": token,
+        "verify_method": verify_method,
         "created_at": now,
     })
     await db.listings.update_one(
@@ -609,7 +705,7 @@ async def share_listing(listing_id: str, payload: ShareRequest, request: Request
             "purpose": "share",
             "listing_id": listing_id,
             "credits": new_credits,
-            "target": payload.target,
+            "target": target,
             "at": now,
         })
     except Exception:
@@ -617,8 +713,243 @@ async def share_listing(listing_id: str, payload: ShareRequest, request: Request
     return {
         "credited": True,
         "credits": new_credits,
-        "target": payload.target,
+        "target": target,
+        "listing_id": listing_id,
     }
+
+
+async def _credit_verified_share(
+    listing_id: str,
+    oid: ObjectId,
+    doc: dict,
+    target: str,
+    ip: str,
+    post_url: str,
+    token: Optional[str] = None,
+) -> dict:
+    """Fetch the public post; only then award +CREDITS_PER_SHARE."""
+    if target == "whatsapp":
+        raise HTTPException(
+            400,
+            "WhatsApp is counted when someone opens your unique FreshBoard link — not by pasting a URL.",
+        )
+    try:
+        norm = verify_post(target, post_url, doc.get("title") or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return await _apply_credit(
+        listing_id, oid, doc, target, ip,
+        post_url=post_url, post_url_norm=norm, token=token, verify_method="post_fetch",
+    )
+
+
+@api.get("/dev/share-fixture")
+async def share_fixture(company: str = "", token: str = "", blank: str = "0"):
+    """HTML stand-in for a public post. Only available against the test database."""
+    if not test_fixtures_enabled():
+        raise HTTPException(404, "Not found")
+    return HTMLResponse(fixture_html(company, token, blank == "1"))
+
+
+@api.post("/share/start")
+async def share_start(payload: ShareStartRequest, request: Request):
+    """Open a share attempt. Credits are NOT awarded until the post (or WhatsApp link hit) is proven."""
+    try:
+        oid = ObjectId(payload.listing_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await db.listings.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Listing not found")
+
+    ip = client_ip(request)
+    hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    recent = await db.share_intents.count_documents({"ip": ip, "created_at": {"$gte": hour_ago}})
+    if recent >= 20:
+        raise HTTPException(429, "Too many share attempts. Try later.")
+
+    token = secrets.token_urlsafe(12)
+    now = now_iso()
+    origin = (payload.origin or "").rstrip("/")
+    track_path = f"/s/{token}"
+    track_url = f"{origin}{track_path}" if origin else track_path
+    title = doc.get("title") or ""
+    await db.share_intents.insert_one({
+        "token": token,
+        "listing_id": payload.listing_id,
+        "title": title,
+        "target": payload.target,
+        "ip": ip,
+        "origin": origin or None,
+        "status": "pending",
+        "created_at": now,
+    })
+    template = _share_template(title, track_url if payload.target == "whatsapp" else None)
+    return {
+        "token": token,
+        "listing_id": payload.listing_id,
+        "title": title,
+        "target": payload.target,
+        "template": template,
+        "track_path": track_path,
+        "verify_method": "track_hit" if payload.target == "whatsapp" else "post_fetch",
+        "credits_per_share": CREDITS_PER_SHARE,
+    }
+
+
+@api.post("/share/verify")
+async def share_verify(payload: ShareVerifyRequest, request: Request):
+    """Award +5 only after the published post is fetched and matches the template."""
+    intent = await db.share_intents.find_one({"token": payload.token})
+    if not intent:
+        raise HTTPException(404, "Share session not found. Start again.")
+    created = intent.get("created_at") or ""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    if created < cutoff:
+        raise HTTPException(400, "Share expired. Start again.")
+    if intent.get("status") == "credited":
+        try:
+            oid = ObjectId(intent["listing_id"])
+        except Exception:
+            oid = None
+        doc = await db.listings.find_one({"_id": oid}) if oid else None
+        return {
+            "credited": False,
+            "credits": float((doc or {}).get("current_bid", 0)),
+            "reason": "already_shared",
+            "listing_id": intent["listing_id"],
+        }
+
+    try:
+        oid = ObjectId(intent["listing_id"])
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await db.listings.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Listing not found")
+
+    if intent.get("target") == "whatsapp":
+        raise HTTPException(
+            400,
+            "WhatsApp is counted when someone opens your unique FreshBoard link.",
+        )
+    if not (payload.post_url or "").strip():
+        raise HTTPException(400, "Paste the live post URL after you publish.")
+
+    ip = client_ip(request)
+    result = await _credit_verified_share(
+        intent["listing_id"], oid, doc, intent["target"], ip, payload.post_url, payload.token,
+    )
+    if result.get("credited"):
+        await db.share_intents.update_one(
+            {"token": payload.token},
+            {"$set": {"status": "credited", "post_url": payload.post_url.strip()}},
+        )
+    return result
+
+
+@api.get("/share/status/{token}")
+async def share_status(token: str):
+    intent = await db.share_intents.find_one({"token": token})
+    if not intent:
+        raise HTTPException(404, "Share session not found")
+    try:
+        oid = ObjectId(intent["listing_id"])
+    except Exception:
+        oid = None
+    doc = await db.listings.find_one({"_id": oid}) if oid else None
+    return {
+        "token": token,
+        "status": intent.get("status"),
+        "target": intent.get("target"),
+        "listing_id": intent["listing_id"],
+        "title": intent.get("title"),
+        "credited": intent.get("status") == "credited",
+        "credits": float((doc or {}).get("current_bid", 0)),
+    }
+
+
+@api.get("/share/hit/{token}")
+async def share_hit(token: str, request: Request):
+    """WhatsApp proof: a human opens the unique link. Crawlers and the sharer's own IP do not count."""
+    intent = await db.share_intents.find_one({"token": token})
+    if not intent:
+        raise HTTPException(404, "Share link not found")
+    try:
+        oid = ObjectId(intent["listing_id"])
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await db.listings.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Listing not found")
+
+    visitor = client_ip(request)
+    ua = request.headers.get("user-agent") or ""
+    crawler = is_crawler_ua(ua)
+    now = now_iso()
+    await db.share_hits.insert_one({
+        "token": token,
+        "listing_id": intent["listing_id"],
+        "ip": visitor,
+        "ua": ua[:300],
+        "kind": "crawler" if crawler else "human",
+        "created_at": now,
+    })
+
+    redirect = f"/product/{intent['listing_id']}"
+    base = {
+        "listing_id": intent["listing_id"],
+        "title": intent.get("title"),
+        "redirect": redirect,
+        "target": intent.get("target"),
+    }
+
+    if intent.get("target") != "whatsapp":
+        return {**base, "credited": False, "reason": "not_whatsapp", "credits": float(doc.get("current_bid", 0))}
+    if intent.get("status") == "credited":
+        return {**base, "credited": False, "reason": "already_shared", "credits": float(doc.get("current_bid", 0))}
+    if crawler:
+        return {**base, "credited": False, "reason": "preview_fetch", "credits": float(doc.get("current_bid", 0))}
+    if visitor == intent.get("ip"):
+        return {**base, "credited": False, "reason": "same_device", "credits": float(doc.get("current_bid", 0))}
+
+    result = await _apply_credit(
+        intent["listing_id"], oid, doc, "whatsapp", intent.get("ip") or visitor,
+        post_url_norm=f"whatsapp:hit:{token}",
+        token=token,
+        verify_method="track_hit",
+        visitor_ip=visitor,
+    )
+    if result.get("credited"):
+        await db.share_intents.update_one(
+            {"token": token},
+            {"$set": {"status": "credited", "credited_at": now, "visitor_ip": visitor}},
+        )
+    return {**base, **result}
+
+
+@api.post("/listings/{listing_id}/share")
+async def share_listing(listing_id: str, payload: ShareRequest, request: Request):
+    """One-shot: verify a published post URL, then +CREDITS_PER_SHARE on that company."""
+    try:
+        oid = ObjectId(listing_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await db.listings.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Listing not found")
+    if payload.target not in POST_TARGETS:
+        raise HTTPException(
+            400,
+            "WhatsApp needs /share/start plus a click on the unique link.",
+        )
+    if not (payload.post_url or "").strip():
+        raise HTTPException(422, "post_url required")
+
+    ip = client_ip(request)
+    return await _credit_verified_share(
+        listing_id, oid, doc, payload.target, ip, payload.post_url,
+    )
 
 
 @api.post("/outbid")
@@ -783,6 +1114,20 @@ app.add_middleware(
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+@app.on_event("startup")
+async def ensure_share_indexes():
+    """listings, share_intents, share_events, share_hits — the share-to-rank store."""
+    await db.listings.create_index([("created_at_iso", 1), ("current_bid", -1)])
+    await db.listings.create_index([("title", 1)])
+    await db.share_intents.create_index("token", unique=True)
+    await db.share_intents.create_index([("ip", 1), ("created_at", -1)])
+    await db.share_intents.create_index([("listing_id", 1), ("status", 1)])
+    await db.share_events.create_index([("listing_id", 1), ("target", 1), ("ip", 1)])
+    await db.share_events.create_index("post_url_norm", unique=True, sparse=True)
+    await db.share_events.create_index("token", sparse=True)
+    await db.share_hits.create_index([("token", 1), ("created_at", -1)])
 
 
 @app.on_event("shutdown")

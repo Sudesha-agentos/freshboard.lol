@@ -80,7 +80,7 @@ export default function ListingCard({ item, onCredited }) {
         <ShareMenu
           listing={item}
           credits={credits}
-          onCredited={(c) => onCredited && onCredited(item.id, c)}
+          onCredited={(c, id) => onCredited && onCredited(id || item.id, c)}
         >
           <button
             data-testid={`share-btn-${item.id}`}

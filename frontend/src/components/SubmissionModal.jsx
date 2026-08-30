@@ -112,7 +112,7 @@ export default function SubmissionModal({ open, onClose, defaultType = "product"
                 <span className="flex items-center gap-2"><Rocket className="text-[color:var(--fb-pink)]" /> Get on the board</span>
               </DialogTitle>
               <DialogDescription className="text-[color:var(--fb-text-2)] font-mono text-xs">
-                Free to list. You start with {config.welcome_credits} credits and earn +{config.credits_per_share} for every share. Highest credits = #1.
+                Free to list. You start with {config.welcome_credits} credits and earn +{config.credits_per_share} when a public post is verified. Highest credits = #1.
               </DialogDescription>
             </DialogHeader>
 
@@ -230,14 +230,16 @@ export default function SubmissionModal({ open, onClose, defaultType = "product"
             <PartyPopper size={40} className="mx-auto text-[color:var(--fb-yellow)]" />
             <h2 className="font-display text-3xl font-black text-white mt-3">You're on the board.</h2>
             <p className="font-mono text-sm text-[color:var(--fb-text-2)] mt-2">
-              Starting credits: <span className="text-[color:var(--fb-green)]">{done.credits}</span>. Each share adds +{config.credits_per_share} — pick a channel below.
+              Starting credits: <span className="text-[color:var(--fb-green)]">{done.credits}</span>. A verified public post adds +{config.credits_per_share} — pick a channel below.
             </p>
 
             <div className="mt-6 flex justify-center">
               <ShareMenu
                 listing={{ id: done.id, title: done.title, url: done.url }}
                 credits={done.credits}
-                onCredited={(c) => setSubmitted(s => ({ ...s, credits: c }))}
+                onCredited={(c, id) => {
+                  if (!id || id === done.id) setSubmitted(s => ({ ...s, credits: c }));
+                }}
               >
                 <button data-testid="share-cta" className="fb-btn-primary inline-flex items-center gap-2">
                   <Sparkles size={14} /> Share to earn credits

@@ -118,7 +118,9 @@ export default function ProductDetail() {
             <ShareMenu
               listing={item}
               credits={credits}
-              onCredited={(c) => setItem(i => ({ ...i, current_bid: c }))}
+              onCredited={(c, id) => {
+                if (!id || id === item.id) setItem(i => ({ ...i, current_bid: c }));
+              }}
               side="top"
               align="end"
             >

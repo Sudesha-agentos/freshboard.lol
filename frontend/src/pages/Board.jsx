@@ -46,10 +46,13 @@ export default function Board() {
 
   const handleCredited = (listingId, newCredits) => {
     setBoard(b => {
-      const bump = (arr) => arr.map(it => it.id === listingId ? { ...it, current_bid: newCredits } : it);
+      const now = new Date().toISOString();
+      const bump = (arr) => arr
+        .map(it => it.id === listingId ? { ...it, current_bid: newCredits, last_bid_at_iso: now } : it)
+        .sort((a, c) => (Number(c.current_bid) - Number(a.current_bid)) || String(c.last_bid_at_iso || "").localeCompare(String(a.last_bid_at_iso || "")))
+        .map((it, i) => ({ ...it, rank: i + 1 }));
       return { ...b, products: bump(b.products), socials: bump(b.socials) };
     });
-    // Trigger a re-fetch to update ranks
     load(false);
   };
 
@@ -177,7 +180,7 @@ function ListGrid({ items, onCredited, emptyType, onSubmit }) {
           BOARD IS EMPTY.
         </div>
         <p className="font-mono text-xs sm:text-sm text-[color:var(--fb-text-2)] max-w-md mx-auto">
-          Add your product for free and start with 5 credits. Share on 6 channels to earn +5 each. Board wipes every midnight IST.
+          Add your product for free and start with 5 credits. A verified public post is +5. Highest credits stay on top. Board wipes every midnight IST.
         </p>
         <button onClick={onSubmit} className="fb-btn-primary mt-6 inline-flex items-center gap-2">
           <Rocket size={16} /> Launch for free

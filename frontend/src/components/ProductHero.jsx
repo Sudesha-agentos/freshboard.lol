@@ -37,7 +37,7 @@ export default function ProductHero({ onLaunch }) {
           The board is <span className="text-[color:var(--fb-pink)]">empty</span>.
         </h1>
         <p className="font-mono text-[color:var(--fb-text-2)] mt-4 text-sm md:text-base max-w-xl mx-auto">
-          Add your product for free. Share it to earn credits. Highest credits = #1.
+          Add your product for free. Share a real post to earn credits. Highest credits = #1.
         </p>
         <div className="flex justify-center gap-3 mt-6">
           <button data-testid="hero-launch-btn" onClick={onLaunch} className="fb-btn-primary inline-flex items-center gap-2">
