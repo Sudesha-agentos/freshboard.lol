@@ -5,42 +5,39 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "./ui/select";
-import { Zap, Rocket, TrendingUp, Sparkles, Loader2 } from "lucide-react";
-import { submitListing, outbidListing, fetchConfig, previewUrl } from "../lib/api";
+import { Rocket, Sparkles, Loader2, PartyPopper } from "lucide-react";
+import { submitListing, fetchConfig, previewUrl } from "../lib/api";
 import { toast } from "sonner";
+import ShareMenu from "./ShareMenu";
+import { useNavigate } from "react-router-dom";
 
-const PLACEHOLDER_IMG = "https://images.unsplash.com/photo-1650800543888-9ef964fc33d2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHw0fHwzZCUyMGdlb21ldHJ5JTIwbWluaW1hbHxlbnwwfHx8YmxhY2t8MTc4ODExNzI3NXww&ixlib=rb-4.1.0&q=85";
+const DEFAULT_IMG = "https://images.unsplash.com/photo-1650800543888-9ef964fc33d2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHw0fHwzZCUyMGdlb21ldHJ5JTIwbWluaW1hbHxlbnwwfHx8YmxhY2t8MTc4ODExNzI3NXww&ixlib=rb-4.1.0&q=85";
 
-export default function SubmissionModal({ open, onClose, mode, target, defaultType = "product" }) {
-  const [config, setConfig] = useState({ categories: [], min_bid: 1, boost_price: 10, boost_reach: 5 });
+export default function SubmissionModal({ open, onClose, defaultType = "product" }) {
+  const [config, setConfig] = useState({ categories: [], credits_per_share: 5, welcome_credits: 5 });
   const [listingType, setListingType] = useState(defaultType);
   const [form, setForm] = useState({
     title: "", tagline: "", description: "", url: "", image_url: "",
     category: "", platform: "x",
   });
-  const [bid, setBid] = useState("1");
-  const [boost, setBoost] = useState(false);
   const [busy, setBusy] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [submitted, setSubmitted] = useState(null); // { id, credits, title, url, image_url, listing_type }
   const previewedRef = useRef("");
   const debounceRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (mode === "outbid" && target) {
-      const min = (Number(target.current_bid) + 1).toFixed(2);
-      setBid(min);
-    } else {
-      setBid(String(config.min_bid || 1));
-      setListingType(defaultType);
-      setForm({ title: "", tagline: "", description: "", url: "", image_url: "", category: config.categories?.[0] || "", platform: "x" });
-      setBoost(false);
-      previewedRef.current = "";
-    }
-  }, [mode, target, open, config, defaultType]);
+    if (!open) return;
+    setListingType(defaultType);
+    setForm({ title: "", tagline: "", description: "", url: "", image_url: "", category: config.categories?.[0] || "", platform: "x" });
+    setSubmitted(null);
+    previewedRef.current = "";
+  }, [open, defaultType, config]);
 
   const runPreview = async (url) => {
     const clean = (url || "").trim();
@@ -56,7 +53,7 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
         tagline: f.tagline || data.tagline || "",
         image_url: f.image_url || data.image_url || "",
       }));
-    } catch { /* silent — user can fill manually */ }
+    } catch { /* silent */ }
     finally { setPreviewing(false); }
   };
 
@@ -74,45 +71,33 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
     if (busy) return;
     setBusy(true);
     try {
-      let res;
-      const origin_url = window.location.origin;
-      if (mode === "outbid") {
-        res = await outbidListing({
-          listing_id: target.id,
-          bid_amount: Number(bid),
-          add_boost: boost,
-          origin_url,
-        });
-      } else {
-        const payload = {
-          listing_type: listingType,
-          title: form.title,
-          tagline: form.tagline,
-          description: form.description,
-          url: form.url,
-          image_url: form.image_url || PLACEHOLDER_IMG,
-          bid_amount: Number(bid),
-          add_boost: boost,
-          origin_url,
-        };
-        if (listingType === "product") payload.category = form.category || config.categories[0];
-        else payload.platform = form.platform;
-        res = await submitListing(payload);
-      }
-      if (res.checkout_url) {
-        window.location.href = res.checkout_url;
-      } else {
-        toast.error("Checkout failed");
-      }
+      const payload = {
+        listing_type: listingType,
+        title: form.title,
+        tagline: form.tagline,
+        description: form.description,
+        url: form.url,
+        image_url: form.image_url || DEFAULT_IMG,
+      };
+      if (listingType === "product") payload.category = form.category || config.categories[0];
+      else payload.platform = form.platform;
+
+      const res = await submitListing(payload);
+      setSubmitted({
+        id: res.listing_id,
+        credits: res.credits,
+        title: form.title,
+        url: form.url,
+        image_url: form.image_url || DEFAULT_IMG,
+        listing_type: listingType,
+      });
+      toast.success("You're on the board.", { description: `Start with ${res.credits} credits — share to climb.` });
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Something went wrong");
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
-  const total = Number(bid || 0) + (boost ? config.boost_price : 0);
-  const minBid = mode === "outbid" && target ? Number(target.current_bid) + 0.01 : config.min_bid;
-  const isOutbid = mode === "outbid";
+  const done = submitted;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -120,43 +105,35 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
         data-testid="submission-modal"
         className="bg-[color:var(--fb-surface)] border border-[color:var(--fb-border)] text-white w-[calc(100vw-1.5rem)] max-w-lg rounded-none max-h-[90vh] overflow-y-auto p-4 sm:p-6"
       >
-        <DialogHeader>
-          <DialogTitle className="font-display text-2xl">
-            {isOutbid ? (
-              <span className="flex items-center gap-2"><TrendingUp className="text-[color:var(--fb-pink)]" /> Outbid #{target?.rank}</span>
-            ) : (
-              <span className="flex items-center gap-2"><Rocket className="text-[color:var(--fb-pink)]" /> Claim your spot</span>
-            )}
-          </DialogTitle>
-          <DialogDescription className="text-[color:var(--fb-text-2)] font-mono text-xs">
-            {isOutbid
-              ? `Bid higher than $${Number(target?.current_bid || 0).toFixed(2)} to take rank #${target?.rank}. Previous holder drops one spot.`
-              : "Pay to rank. Highest bid = #1. Board resets midnight IST."}
-          </DialogDescription>
-        </DialogHeader>
+        {!done && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="font-display text-2xl">
+                <span className="flex items-center gap-2"><Rocket className="text-[color:var(--fb-pink)]" /> Get on the board</span>
+              </DialogTitle>
+              <DialogDescription className="text-[color:var(--fb-text-2)] font-mono text-xs">
+                Free to list. You start with {config.welcome_credits} credits and earn +{config.credits_per_share} for every share. Highest credits = #1.
+              </DialogDescription>
+            </DialogHeader>
 
-        <form onSubmit={onSubmit} className="space-y-4 mt-2">
-          {!isOutbid && (
-            <div className="grid grid-cols-2 gap-2">
-              {["product", "social"].map(t => (
-                <button
-                  key={t}
-                  type="button"
-                  data-testid={`type-${t}`}
-                  onClick={() => setListingType(t)}
-                  className={`fb-btn-ghost text-xs ${listingType === t ? "!border-[color:var(--fb-pink)] !text-[color:var(--fb-pink)]" : ""}`}
-                >
-                  {t === "product" ? "Product" : "Social Post"}
-                </button>
-              ))}
-            </div>
-          )}
+            <form onSubmit={onSubmit} className="space-y-4 mt-2">
+              <div className="grid grid-cols-2 gap-2">
+                {["product", "social"].map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    data-testid={`type-${t}`}
+                    onClick={() => setListingType(t)}
+                    className={`fb-btn-ghost text-xs ${listingType === t ? "!border-[color:var(--fb-pink)] !text-[color:var(--fb-pink)]" : ""}`}
+                  >
+                    {t === "product" ? "Product" : "Social Post"}
+                  </button>
+                ))}
+              </div>
 
-          {!isOutbid && (
-            <>
               <div>
                 <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)] flex items-center gap-2">
-                  URL (external link)
+                  URL (your link)
                   {previewing && (
                     <span className="inline-flex items-center gap-1 text-[color:var(--fb-cyan)] normal-case tracking-normal">
                       <Loader2 size={10} className="animate-spin" /> fetching…
@@ -201,10 +178,6 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
                 <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Tagline</label>
                 <input data-testid="input-tagline" className="fb-input mt-1" value={form.tagline} onChange={update("tagline")} required maxLength={140} />
               </div>
-              <div>
-                <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Thumbnail image URL <span className="opacity-60">(optional)</span></label>
-                <input data-testid="input-image" className="fb-input mt-1" value={form.image_url} onChange={update("image_url")} placeholder="https://..." />
-              </div>
 
               {listingType === "product" && (
                 <div>
@@ -236,54 +209,59 @@ export default function SubmissionModal({ open, onClose, mode, target, defaultTy
                   </Select>
                 </div>
               )}
-            </>
-          )}
 
-          <div>
-            <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">
-              {isOutbid ? `Your bid (min $${minBid.toFixed(2)})` : `Bid amount (min $${config.min_bid})`}
-            </label>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="font-display text-2xl text-[color:var(--fb-green)]">$</span>
-              <input
-                data-testid="input-bid"
-                type="number"
-                step="0.01"
-                min={minBid}
-                className="fb-input"
-                value={bid}
-                onChange={(e) => setBid(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <label className="flex items-start gap-3 p-3 border border-[color:var(--fb-border)] bg-black/40 cursor-pointer">
-            <input
-              data-testid="input-boost"
-              type="checkbox"
-              checked={boost}
-              onChange={(e) => setBoost(e.target.checked)}
-              className="mt-1 accent-[color:var(--fb-cyan)]"
-            />
-            <div>
-              <div className="flex items-center gap-2 text-white text-sm">
-                <Zap size={14} className="text-[color:var(--fb-cyan)]" /> Add Share Boost — ${config.boost_price}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[color:var(--fb-border)]">
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Starting credits</div>
+                  <div data-testid="starting-credits" className="font-display text-2xl text-[color:var(--fb-green)]">
+                    {config.welcome_credits}
+                  </div>
+                </div>
+                <button data-testid="submit-listing" type="submit" disabled={busy} className="fb-btn-primary">
+                  {busy ? "Adding…" : "Add to board"}
+                </button>
               </div>
-              <p className="text-xs text-[color:var(--fb-text-2)] mt-1">Push your listing to {config.boost_reach} extra channels.</p>
-            </div>
-          </label>
+            </form>
+          </>
+        )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[color:var(--fb-border)]">
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Total</div>
-              <div data-testid="total-amount" className="font-display text-3xl text-white">${total.toFixed(2)}</div>
+        {done && (
+          <div className="text-center py-2" data-testid="submitted-view">
+            <PartyPopper size={40} className="mx-auto text-[color:var(--fb-yellow)]" />
+            <h2 className="font-display text-3xl font-black text-white mt-3">You're on the board.</h2>
+            <p className="font-mono text-sm text-[color:var(--fb-text-2)] mt-2">
+              Starting credits: <span className="text-[color:var(--fb-green)]">{done.credits}</span>. Each share adds +{config.credits_per_share} — pick a channel below.
+            </p>
+
+            <div className="mt-6 flex justify-center">
+              <ShareMenu
+                listing={{ id: done.id, title: done.title, url: done.url }}
+                credits={done.credits}
+                onCredited={(c) => setSubmitted(s => ({ ...s, credits: c }))}
+              >
+                <button data-testid="share-cta" className="fb-btn-primary inline-flex items-center gap-2">
+                  <Sparkles size={14} /> Share to earn credits
+                </button>
+              </ShareMenu>
             </div>
-            <button data-testid="submit-checkout" type="submit" disabled={busy} className="fb-btn-primary">
-              {busy ? "Redirecting..." : (isOutbid ? "Pay to Outbid" : "Pay & List")}
-            </button>
+
+            <div className="mt-6 flex justify-center gap-2">
+              <button
+                onClick={() => { onClose(); navigate(`/product/${done.id}`); }}
+                className="fb-btn-ghost text-xs"
+              >
+                View listing
+              </button>
+              <button
+                onClick={() => onClose()}
+                className="fb-btn-ghost text-xs"
+                data-testid="close-modal"
+              >
+                Back to board
+              </button>
+            </div>
           </div>
-        </form>
+        )}
       </DialogContent>
     </Dialog>
   );

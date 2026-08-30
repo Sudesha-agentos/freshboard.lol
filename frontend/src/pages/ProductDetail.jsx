@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { fetchListing, trackClick } from "../lib/api";
-import { timeAgo, money } from "../lib/format";
-import { ArrowLeft, ArrowUpRight, TrendingUp, Zap, MousePointerClick, Loader2 } from "lucide-react";
-import SubmissionModal from "../components/SubmissionModal";
+import { timeAgo } from "../lib/format";
+import { ArrowLeft, ArrowUpRight, Sparkles, Zap, MousePointerClick, Loader2 } from "lucide-react";
 import Marquee from "../components/Marquee";
 import Countdown from "../components/Countdown";
+import ShareMenu from "../components/ShareMenu";
 
 export default function ProductDetail() {
   const { id } = useParams();
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -24,7 +23,7 @@ export default function ProductDetail() {
       }
     };
     load();
-    const t = setInterval(load, 8000);
+    const t = setInterval(load, 15000);
     return () => { alive = false; clearInterval(t); };
   }, [id]);
 
@@ -45,7 +44,7 @@ export default function ProductDetail() {
     );
   }
 
-  const nextBid = (Number(item.current_bid) + 1).toFixed(0);
+  const credits = Math.round(Number(item.current_bid) || 0);
   const platformLabel = item.platform === "x" ? "X" : item.platform === "instagram" ? "IG" : null;
 
   return (
@@ -103,26 +102,33 @@ export default function ProductDetail() {
               data-testid="detail-visit-link"
               className="fb-btn-ghost inline-flex items-center gap-2 mt-6"
             >
-              Visit {new URL(item.url).hostname} <ArrowUpRight size={16} />
+              Visit {new URL(item.url).hostname.replace(/^www\./, "")} <ArrowUpRight size={16} />
             </a>
           </div>
 
           <aside className="border border-[color:var(--fb-border)] bg-[color:var(--fb-surface)] p-5 md:p-6 h-fit md:sticky md:top-24">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Current bid</div>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Credits</div>
             <div className="font-display text-4xl md:text-5xl font-black text-[color:var(--fb-yellow)] mt-1">
-              {money(item.current_bid, { compact: true })}
+              {credits}
             </div>
             <div className="text-[10px] font-mono text-[color:var(--fb-muted)] mt-1">
               Updated {timeAgo(item.last_bid_at_iso)}
             </div>
 
-            <button
-              data-testid="detail-outbid-btn"
-              onClick={() => setModal(true)}
-              className="fb-btn-primary w-full mt-4 inline-flex items-center justify-center gap-2"
+            <ShareMenu
+              listing={item}
+              credits={credits}
+              onCredited={(c) => setItem(i => ({ ...i, current_bid: c }))}
+              side="top"
+              align="end"
             >
-              <TrendingUp size={16} /> Claim this rank for ${nextBid}
-            </button>
+              <button
+                data-testid="detail-share-btn"
+                className="fb-btn-primary w-full mt-4 inline-flex items-center justify-center gap-2"
+              >
+                <Sparkles size={16} /> Share to earn +5 credits
+              </button>
+            </ShareMenu>
 
             {Number(item.click_count || 0) > 0 && (
               <div className="mt-4 pt-4 border-t border-[color:var(--fb-border)] flex items-center gap-2 text-xs font-mono text-[color:var(--fb-text-2)]">
@@ -136,14 +142,6 @@ export default function ProductDetail() {
           </aside>
         </div>
       </main>
-
-      <SubmissionModal
-        open={modal}
-        onClose={() => setModal(false)}
-        mode="outbid"
-        target={item}
-        defaultType={item.listing_type}
-      />
     </div>
   );
 }

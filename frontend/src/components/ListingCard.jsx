@@ -1,12 +1,13 @@
-import { ArrowUpRight, Zap, TrendingUp, MousePointerClick } from "lucide-react";
+import { ArrowUpRight, Zap, Sparkles, MousePointerClick } from "lucide-react";
 import { Link } from "react-router-dom";
 import { trackClick } from "../lib/api";
-import { timeAgo, money } from "../lib/format";
+import { timeAgo } from "../lib/format";
+import ShareMenu from "./ShareMenu";
 
-export default function ListingCard({ item, onOutbid }) {
+export default function ListingCard({ item, onCredited }) {
   const isOne = item.rank === 1;
   const platformLabel = item.platform === "x" ? "𝕏" : item.platform === "instagram" ? "IG" : null;
-  const nextBid = (Number(item.current_bid) + 1).toFixed(0);
+  const credits = Math.round(Number(item.current_bid) || 0);
 
   const handleClick = () => { trackClick(item.id); };
 
@@ -15,7 +16,6 @@ export default function ListingCard({ item, onOutbid }) {
       data-testid={`listing-card-${item.id}`}
       className={`fb-card p-3 sm:p-4 md:p-5 flex flex-col md:flex-row gap-3 md:gap-4 relative ${isOne ? "border-[color:var(--fb-yellow)]" : ""}`}
     >
-      {/* MAIN — rank, image, product */}
       <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
         <div className="flex flex-col items-center min-w-[38px] sm:min-w-[48px]">
           <span className={`font-display font-black ${isOne ? "text-2xl sm:text-3xl text-[color:var(--fb-yellow)]" : "text-xl sm:text-2xl text-[color:var(--fb-text-2)]"}`}>
@@ -48,12 +48,8 @@ export default function ListingCard({ item, onOutbid }) {
             {item.tagline}
           </p>
           <div className="flex items-center gap-1.5 flex-wrap mt-2 text-[10px] font-mono text-[color:var(--fb-muted)] uppercase tracking-widest">
-            {item.category && (
-              <span className="text-[color:var(--fb-text-2)]">{item.category}</span>
-            )}
-            {platformLabel && (
-              <span className="text-[color:var(--fb-cyan)]">{platformLabel}</span>
-            )}
+            {item.category && <span className="text-[color:var(--fb-text-2)]">{item.category}</span>}
+            {platformLabel && <span className="text-[color:var(--fb-cyan)]">{platformLabel}</span>}
             {(item.category || platformLabel) && <span>·</span>}
             <span>{timeAgo(item.last_bid_at_iso)}</span>
             {Number(item.click_count || 0) > 0 && (
@@ -76,21 +72,23 @@ export default function ListingCard({ item, onOutbid }) {
         </div>
       </div>
 
-      {/* RIGHT — subtle bid chip + claim CTA */}
-      <div className="flex items-center justify-between md:justify-end gap-3 md:gap-4 md:min-w-[200px] pt-2 md:pt-0 md:pl-4 md:border-l border-t md:border-t-0 border-[color:var(--fb-border)]">
+      <div className="flex items-center justify-between md:justify-end gap-3 md:gap-4 md:min-w-[220px] pt-2 md:pt-0 md:pl-4 md:border-l border-t md:border-t-0 border-[color:var(--fb-border)]">
         <div className="text-[10px] font-mono text-[color:var(--fb-text-2)]">
-          <span className="uppercase tracking-widest opacity-60">bid</span>{" "}
-          <span data-testid={`bid-amount-${item.id}`} className="text-[color:var(--fb-text)]">
-            {money(item.current_bid, { compact: true })}
-          </span>
+          <span className="uppercase tracking-widest opacity-60">credits</span>{" "}
+          <span data-testid={`credits-${item.id}`} className="text-[color:var(--fb-text)]">{credits}</span>
         </div>
-        <button
-          data-testid={`outbid-btn-${item.id}`}
-          onClick={() => onOutbid(item)}
-          className="fb-btn-primary inline-flex items-center gap-1.5 text-[11px] sm:text-xs px-3 sm:px-4 py-2 whitespace-nowrap"
+        <ShareMenu
+          listing={item}
+          credits={credits}
+          onCredited={(c) => onCredited && onCredited(item.id, c)}
         >
-          <TrendingUp size={12} /> Claim for ${nextBid}
-        </button>
+          <button
+            data-testid={`share-btn-${item.id}`}
+            className="fb-btn-primary inline-flex items-center gap-1.5 text-[11px] sm:text-xs px-3 sm:px-4 py-2 whitespace-nowrap"
+          >
+            <Sparkles size={12} /> Share +5
+          </button>
+        </ShareMenu>
       </div>
     </div>
   );

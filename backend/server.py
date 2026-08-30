@@ -90,9 +90,10 @@ class SubmitPayload(BaseModel):
     image_url: str
     category: Optional[str] = None
     platform: Optional[Literal["x", "instagram"]] = None
-    bid_amount: float = Field(ge=MIN_BID)
-    add_boost: bool = False
-    origin_url: str
+
+
+class ShareRequest(BaseModel):
+    target: Literal["x", "linkedin", "reddit", "facebook", "whatsapp", "copy"]
 
 
 class OutbidPayload(BaseModel):
@@ -100,6 +101,10 @@ class OutbidPayload(BaseModel):
     bid_amount: float = Field(ge=MIN_BID)
     add_boost: bool = False
     origin_url: str
+
+
+CREDITS_PER_SHARE = 5
+WELCOME_CREDITS = 5
 
 
 # ---------------------------------------------------------------------
@@ -150,6 +155,9 @@ async def get_config():
         "min_bid": MIN_BID,
         "boost_price": BOOST_PRICE,
         "boost_reach": BOOST_REACH,
+        "credits_per_share": CREDITS_PER_SHARE,
+        "welcome_credits": WELCOME_CREDITS,
+        "share_targets": ["x", "linkedin", "reddit", "facebook", "whatsapp", "copy"],
     }
 
 
@@ -223,25 +231,42 @@ async def track_click(listing_id: str):
 
 @api.get("/activity")
 async def get_activity(limit: int = 20):
-    """Return latest paid bids (both new listings and outbids) as an activity feed."""
-    cursor = db.payment_transactions.find(
-        {"payment_status": "paid"}
-    ).sort("updated_at", -1).limit(min(max(limit, 1), 50))
+    """Return latest activity: recent share events (credits earned) and new listings."""
+    limit = min(max(limit, 1), 50)
+    events = []
+
+    async for ev in db.share_events.find({}).sort("created_at", -1).limit(limit):
+        events.append({
+            "kind": "share",
+            "at": ev.get("created_at"),
+            "listing_id": ev.get("listing_id"),
+            "target": ev.get("target"),
+        })
+
+    day_start = ist_day_start_utc().isoformat()
+    async for lst in db.listings.find(
+        {"created_at_iso": {"$gte": day_start}}
+    ).sort("created_at_iso", -1).limit(limit):
+        events.append({
+            "kind": "new_listing",
+            "at": lst.get("created_at_iso"),
+            "listing_id": str(lst["_id"]),
+        })
+
+    events.sort(key=lambda e: e.get("at") or "", reverse=True)
+    events = events[:limit]
+
     out = []
-    async for txn in cursor:
-        md = txn.get("metadata") or {}
-        listing_id = txn.get("listing_id") or md.get("listing_id")
+    for e in events:
         listing = None
-        if listing_id:
+        if e.get("listing_id"):
             try:
-                listing = await db.listings.find_one({"_id": ObjectId(listing_id)})
+                listing = await db.listings.find_one({"_id": ObjectId(e["listing_id"])})
             except Exception:
                 listing = None
         if not listing:
             continue
-        # find current rank in current-day board (best effort)
         rank = None
-        day_start = ist_day_start_utc().isoformat()
         if listing.get("created_at_iso", "") >= day_start:
             higher = await db.listings.count_documents({
                 "listing_type": listing["listing_type"],
@@ -259,34 +284,27 @@ async def get_activity(limit: int = 20):
             "platform": listing.get("platform"),
             "current_bid": listing.get("current_bid"),
             "rank": rank,
-            "purpose": txn.get("purpose"),
-            "amount": txn.get("amount"),
-            "at": txn.get("updated_at"),
+            "purpose": "share" if e["kind"] == "share" else "new_listing",
+            "target": e.get("target"),
+            "at": e.get("at"),
         })
     return {"items": out}
 
 
 @api.get("/stats")
 async def get_stats():
-    """Aggregate totals since launch (paid transactions only)."""
-    pipeline = [
-        {"$match": {"payment_status": "paid"}},
-        {"$group": {
-            "_id": None,
-            "total_revenue": {"$sum": "$amount"},
-            "count": {"$sum": 1},
-        }},
-    ]
-    agg = await db.payment_transactions.aggregate(pipeline).to_list(1)
-    total = float(agg[0]["total_revenue"]) if agg else 0.0
-    count = int(agg[0]["count"]) if agg else 0
-    launched_at = os.environ.get("APP_LAUNCHED_AT", "2026-02-01T00:00:00+00:00")
-    # count active listings today
+    """Aggregate totals since launch (credit-based mechanic)."""
     day_start = ist_day_start_utc().isoformat()
     active_today = await db.listings.count_documents({"created_at_iso": {"$gte": day_start}})
+    total_shares = await db.share_events.count_documents({})
+    agg = await db.listings.aggregate([
+        {"$group": {"_id": None, "total_credits": {"$sum": "$current_bid"}}}
+    ]).to_list(1)
+    total_credits = float(agg[0]["total_credits"]) if agg else 0.0
+    launched_at = os.environ.get("APP_LAUNCHED_AT", "2026-02-01T00:00:00+00:00")
     return {
-        "total_revenue": total,
-        "paid_count": count,
+        "total_credits": total_credits,
+        "total_shares": total_shares,
         "active_today": active_today,
         "launched_at": launched_at,
     }
@@ -498,6 +516,8 @@ async def _create_checkout(
 
 @api.post("/submit")
 async def submit_listing(payload: SubmitPayload, request: Request):
+    """Free submission: instantly places the listing on the board with welcome credits.
+    Rank is earned by sharing; no money required for the initial mechanic."""
     validate_url(payload.url)
     validate_url(payload.image_url)
     if payload.listing_type == "product":
@@ -507,27 +527,98 @@ async def submit_listing(payload: SubmitPayload, request: Request):
         if payload.platform not in ("x", "instagram"):
             raise HTTPException(400, "Platform must be 'x' or 'instagram' for social")
 
-    if payload.bid_amount < MIN_BID:
-        raise HTTPException(400, f"Minimum bid is ${MIN_BID}")
-
-    total_amount = payload.bid_amount + (BOOST_PRICE if payload.add_boost else 0)
-
-    metadata = {
-        "kind": "new_listing",
+    now = now_iso()
+    doc = {
         "listing_type": payload.listing_type,
         "title": payload.title,
         "tagline": payload.tagline,
         "description": payload.description or "",
         "url": payload.url,
         "image_url": payload.image_url,
-        "category": payload.category or "",
-        "platform": payload.platform or "",
-        "bid_amount": str(payload.bid_amount),
-        "add_boost": "1" if payload.add_boost else "0",
+        "category": payload.category or None,
+        "platform": payload.platform or None,
+        "current_bid": float(WELCOME_CREDITS),
+        "boosted": False,
+        "boost_count": 0,
+        "click_count": 0,
+        "created_at_iso": now,
+        "last_bid_at_iso": now,
     }
-    return await _create_checkout(
-        request, total_amount, "new_listing", payload.origin_url, metadata
+    result = await db.listings.insert_one(doc)
+    listing_id = str(result.inserted_id)
+    try:
+        await ws_manager.broadcast({
+            "type": "board_update",
+            "purpose": "new_listing",
+            "listing_id": listing_id,
+            "credits": float(WELCOME_CREDITS),
+            "at": now,
+        })
+    except Exception:
+        pass
+    return {
+        "listing_id": listing_id,
+        "credits": float(WELCOME_CREDITS),
+        "credits_per_share": CREDITS_PER_SHARE,
+    }
+
+
+@api.post("/listings/{listing_id}/share")
+async def share_listing(listing_id: str, payload: ShareRequest, request: Request):
+    """Register a share: +CREDITS_PER_SHARE credits per (listing, target, ip) — once each."""
+    try:
+        oid = ObjectId(listing_id)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    doc = await db.listings.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(404, "Listing not found")
+
+    ip = request.client.host if request.client else "unknown"
+    now = now_iso()
+    existing = await db.share_events.find_one({
+        "listing_id": listing_id,
+        "target": payload.target,
+        "ip": ip,
+    })
+    if existing:
+        return {
+            "credited": False,
+            "credits": float(doc.get("current_bid", 0)),
+            "reason": "already_shared",
+        }
+
+    await db.share_events.insert_one({
+        "listing_id": listing_id,
+        "target": payload.target,
+        "ip": ip,
+        "created_at": now,
+    })
+    await db.listings.update_one(
+        {"_id": oid},
+        {
+            "$inc": {"current_bid": CREDITS_PER_SHARE},
+            "$set": {"last_bid_at_iso": now},
+        },
     )
+    updated = await db.listings.find_one({"_id": oid})
+    new_credits = float(updated.get("current_bid", 0))
+    try:
+        await ws_manager.broadcast({
+            "type": "board_update",
+            "purpose": "share",
+            "listing_id": listing_id,
+            "credits": new_credits,
+            "target": payload.target,
+            "at": now,
+        })
+    except Exception:
+        pass
+    return {
+        "credited": True,
+        "credits": new_credits,
+        "target": payload.target,
+    }
 
 
 @api.post("/outbid")

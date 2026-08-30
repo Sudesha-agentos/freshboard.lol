@@ -1,0 +1,32 @@
+{
+  "summary": "FreshBoard.lol iteration 3 testing for share-to-earn credits pivot. Backend: 24/24 pytest tests pass covering /config (credits_per_share=5, welcome_credits=5, 6 share_targets), free /submit (no bid_amount, welcome credits=5, appears on board), all validation cases, /listings/{id}/share (target=x → 10, dedupe same target/IP, linkedin → 15, invalid target 422, non-existent 404, malformed 400), board ranking by credits, /activity mixed purposes, /stats (total_credits, total_shares, active_today, launched_at), regressions (/reset-info IST, /preview, /yesterday-top, /top-today, /click), and WebSocket broadcast for both new_listing and share purposes end-to-end. Frontend: Board loads, submission modal accepts no-bid submission, success view shows Share CTA with all 6 channels, ListingCard share button increments credits optimistically (10→15 confirmed), mobile 375px has no horizontal overflow, product detail page renders share CTA.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/listings/{id}/share", "issue": "Dedupe key uses request.client.host which is the ingress-proxy pod IP (not the real client IP). Because the K8s ingress has multiple replicas, the same real client can be seen by the backend as 10.227.1.195 or 10.227.32.66 across requests. A user can therefore bypass dedupe on the same channel by opening a fresh TCP connection until it lands on a different ingress pod. Fix: read X-Forwarded-For / X-Real-IP header (or use a client-side share_id cookie) instead of request.client.host. Tests worked around this by using a shared requests.Session (keep-alive keeps traffic on one ingress pod)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "WebSocket connect", "issue": "Occasional 'WebSocket is closed before the connection is established' warnings in the console during rapid navigations/reloads. Non-blocking (auto-reconnect works, backend log confirms accepts) but noisy.", "affected_selectors": []}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Backend: derive client IP for share-dedupe from X-Forwarded-For / X-Real-IP (falling back to request.client.host) to prevent trivial dedupe bypass behind multi-replica ingress."
+  ],
+  "critical_code_review_comments": [
+    "share endpoint uses request.client.host for dedupe — with multiple ingress replicas this varies per new TCP connection, letting one client earn credits on the same channel multiple times.",
+    "server.py stays large (~790 lines) with models, routes, WS, and Stripe intermixed. Splitting into modules (models, ws, payments, routes) would improve maintainability. Stripe endpoints remain mounted per instruction but are unused by the UI.",
+    "activity endpoint fetches the listing document per event inside a Python loop — for busy days this is N+1; consider a $lookup pipeline.",
+    "OutbidPayload / /outbid endpoint remain but are effectively dead code — flag for removal in a future cleanup."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "100% (all critical flows validated)"},
+  "seed_data_creation": "Test suite creates TEST_FB_* listings and share_events during run; module-scope autouse fixture deletes them (and orphan share_events) at teardown. Playwright UI test also created one TEST_FB_UI_Prod listing (not auto-cleaned).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend test suite at /app/backend/tests/backend_test.py uses a shared requests.Session() to keep the ingress pod IP stable across calls (necessary for the current IP-based dedupe). If the dedupe is refactored to use X-Forwarded-For, that workaround can be removed. Manual verified: opening a new TCP session against the same listing/target credits again — this is a real dedupe bypass reported to main agent."
+}

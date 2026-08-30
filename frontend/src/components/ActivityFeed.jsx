@@ -48,14 +48,14 @@ export default function ActivityFeed() {
                   {it.rank && <span className="text-[color:var(--fb-text-2)]">#{it.rank}</span>}
                   {it.rank && <span>·</span>}
                   <span>
-                    {it.purpose === "outbid" ? (
-                      <span className="inline-flex items-center gap-0.5"><TrendingUp size={9} /> outbid</span>
+                    {it.purpose === "share" ? (
+                      <span className="inline-flex items-center gap-0.5"><TrendingUp size={9} /> shared</span>
                     ) : (
                       <span className="inline-flex items-center gap-0.5"><Rocket size={9} /> listed</span>
                     )}
                   </span>
                   <span>·</span>
-                  <span className="text-[color:var(--fb-text-2)]">{money(it.current_bid)}</span>
+                  <span className="text-[color:var(--fb-text-2)]">{Math.round(Number(it.current_bid || 0))} cr</span>
                   <span>·</span>
                   <span>{timeAgo(it.at)}</span>
                 </div>

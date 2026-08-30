@@ -37,7 +37,7 @@ export default function WinnersRibbon() {
         />
         <span className="text-sm text-white font-alt truncate">{item.title}</span>
         <span className="ml-auto text-[10px] font-mono text-[color:var(--fb-text-2)] shrink-0">
-          {money(item.current_bid, { compact: true })}
+          {Math.round(Number(item.current_bid || 0))} cr
         </span>
       </Link>
     </div>

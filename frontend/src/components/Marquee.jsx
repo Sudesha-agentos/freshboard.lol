@@ -1,11 +1,11 @@
 export default function Marquee({ items }) {
   const list = items && items.length ? items : [
     "FRESHBOARD.LOL",
-    "RANK IS BOUGHT, NOT VOTED",
-    "$1 MIN BID",
+    "RANK IS SHARED, NOT VOTED",
+    "FREE TO LIST",
+    "+5 CREDITS PER SHARE",
     "BOARD RESETS MIDNIGHT IST",
-    "OUTBID OR GO HOME",
-    "SHIP + PAY = RANK",
+    "SHARE TO CLIMB",
   ];
   const loop = [...list, ...list];
   return (

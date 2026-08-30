@@ -41,13 +41,16 @@ export default function Board() {
 
   useBoardSocket(() => { load(false); });
 
-  const openSubmit = (type) => setModal({ open: true, mode: "submit", target: null, defaultType: type });
-  const openOutbid = (item) => setModal({ open: true, mode: "outbid", target: item, defaultType: item.listing_type });
+  const openSubmit = (type) => setModal({ open: true, defaultType: type });
   const closeModal = () => setModal(m => ({ ...m, open: false }));
 
-  const claimTop = (top) => {
-    if (top) return openOutbid(top);
-    openSubmit("product");
+  const handleCredited = (listingId, newCredits) => {
+    setBoard(b => {
+      const bump = (arr) => arr.map(it => it.id === listingId ? { ...it, current_bid: newCredits } : it);
+      return { ...b, products: bump(b.products), socials: bump(b.socials) };
+    });
+    // Trigger a re-fetch to update ranks
+    load(false);
   };
 
   return (
@@ -64,7 +67,7 @@ export default function Board() {
           <div className="flex items-center gap-3 sm:gap-6">
             <span className="hidden sm:block"><Countdown variant="compact" /></span>
             <button data-testid="header-submit-btn" onClick={() => openSubmit(tab)} className="fb-btn-primary text-[11px] sm:text-xs px-3 sm:px-4 py-2 sm:py-3 inline-flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-              <Plus size={14} /> <span className="hidden xs:inline">Buy a </span>Rank
+              <Plus size={14} /> Add yours
             </button>
           </div>
         </div>
@@ -78,7 +81,7 @@ export default function Board() {
       {/* Product-forward hero (centered, short) */}
       <section className="max-w-7xl mx-auto px-4 md:px-8 pt-6 md:pt-10">
         <WinnersRibbon />
-        <ProductHero onClaim={claimTop} onLaunch={() => openSubmit("product")} />
+        <ProductHero onLaunch={() => openSubmit("product")} />
       </section>
 
       {/* Board Tabs + Activity Sidebar */}
@@ -132,10 +135,10 @@ export default function Board() {
               )}
 
               <TabsContent value="product" className="mt-0">
-                <ListGrid items={board.products} onOutbid={openOutbid} emptyType="product" onSubmit={() => openSubmit("product")} />
+                <ListGrid items={board.products} onCredited={handleCredited} emptyType="product" onSubmit={() => openSubmit("product")} />
               </TabsContent>
               <TabsContent value="social" className="mt-0">
-                <ListGrid items={board.socials} onOutbid={openOutbid} emptyType="social" onSubmit={() => openSubmit("social")} />
+                <ListGrid items={board.socials} onCredited={handleCredited} emptyType="social" onSubmit={() => openSubmit("social")} />
               </TabsContent>
             </Tabs>
           </div>
@@ -153,22 +156,20 @@ export default function Board() {
       <footer className="border-t border-[color:var(--fb-border)] py-6 md:py-8 px-4 md:px-8">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4 font-mono text-[10px] sm:text-xs text-[color:var(--fb-muted)]">
           <span>© FRESHBOARD.LOL — RESET MIDNIGHT IST</span>
-          <span>MADE WITH SPITE + STRIPE</span>
+          <span>SHARE TO CLIMB. NO ACCOUNTS. NO CARDS.</span>
         </div>
       </footer>
 
       <SubmissionModal
         open={modal.open}
         onClose={closeModal}
-        mode={modal.mode}
-        target={modal.target}
         defaultType={modal.defaultType}
       />
     </div>
   );
 }
 
-function ListGrid({ items, onOutbid, emptyType, onSubmit }) {
+function ListGrid({ items, onCredited, emptyType, onSubmit }) {
   if (!items.length) {
     return (
       <div data-testid={`empty-${emptyType}`} className="border border-dashed border-[color:var(--fb-border)] p-8 md:p-12 text-center">
@@ -176,10 +177,10 @@ function ListGrid({ items, onOutbid, emptyType, onSubmit }) {
           BOARD IS EMPTY.
         </div>
         <p className="font-mono text-xs sm:text-sm text-[color:var(--fb-text-2)] max-w-md mx-auto">
-          First bid takes #1. Minimum $1. Board resets every night at midnight IST — so today's #1 buys nothing tomorrow.
+          Add your product for free and start with 5 credits. Share on 6 channels to earn +5 each. Board wipes every midnight IST.
         </p>
         <button onClick={onSubmit} className="fb-btn-primary mt-6 inline-flex items-center gap-2">
-          <Rocket size={16} /> Take #1 now
+          <Rocket size={16} /> Launch for free
         </button>
       </div>
     );
@@ -187,7 +188,7 @@ function ListGrid({ items, onOutbid, emptyType, onSubmit }) {
   return (
     <div className="space-y-3">
       {items.map(it => (
-        <ListingCard key={it.id} item={it} onOutbid={onOutbid} />
+        <ListingCard key={it.id} item={it} onCredited={onCredited} />
       ))}
     </div>
   );
