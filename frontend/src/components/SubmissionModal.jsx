@@ -6,7 +6,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "./ui/select";
 import { Rocket, Sparkles, Loader2, PartyPopper } from "lucide-react";
-import { submitListing, fetchConfig, previewUrl } from "../lib/api";
+import { submitListing, fetchConfig, previewUrl, asConfig } from "../lib/api";
 import { toast } from "sonner";
 import ShareMenu from "./ShareMenu";
 import { useNavigate } from "react-router-dom";
@@ -28,7 +28,7 @@ export default function SubmissionModal({ open, onClose, defaultType = "product"
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchConfig().then(setConfig).catch(() => {});
+    fetchConfig().then((d) => setConfig(asConfig(d))).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -182,12 +182,12 @@ export default function SubmissionModal({ open, onClose, defaultType = "product"
               {listingType === "product" && (
                 <div>
                   <label className="text-xs font-mono uppercase tracking-widest text-[color:var(--fb-text-2)]">Category</label>
-                  <Select value={form.category || config.categories[0]} onValueChange={(v) => setForm(f => ({ ...f, category: v }))}>
+                  <Select value={form.category || (config.categories || [])[0] || ""} onValueChange={(v) => setForm(f => ({ ...f, category: v }))}>
                     <SelectTrigger data-testid="input-category" className="fb-input mt-1 rounded-none">
                       <SelectValue placeholder="Pick a category" />
                     </SelectTrigger>
                     <SelectContent className="bg-[color:var(--fb-surface-2)] border-[color:var(--fb-border)] text-white rounded-none">
-                      {config.categories.map(c => (
+                      {(config.categories || []).map(c => (
                         <SelectItem key={c} value={c} className="font-mono">{c}</SelectItem>
                       ))}
                     </SelectContent>

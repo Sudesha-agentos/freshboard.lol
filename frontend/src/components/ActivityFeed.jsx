@@ -11,7 +11,7 @@ export default function ActivityFeed() {
   const load = async () => {
     try {
       const data = await fetchActivity(12);
-      setItems(data.items || []);
+      setItems(Array.isArray(data?.items) ? data.items : []);
     } catch { /* ignore */ }
   };
 

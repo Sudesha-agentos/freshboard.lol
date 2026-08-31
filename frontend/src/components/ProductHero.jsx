@@ -13,7 +13,7 @@ export default function ProductHero({ onLaunch }) {
   const load = async () => {
     try {
       const data = await fetchTopToday(1);
-      setTop(data.items?.[0] || null);
+      setTop(data?.items?.[0] || null);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   };

@@ -10,7 +10,7 @@ export default function WinnersRibbon() {
   useEffect(() => {
     let alive = true;
     fetchYesterdayTop()
-      .then(d => { if (alive) setItem(d.item); })
+      .then(d => { if (alive) setItem(d?.item || null); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
