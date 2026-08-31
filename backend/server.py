@@ -3,7 +3,7 @@ import logging
 import uuid
 import re
 import secrets
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Annotated, Any, Literal
@@ -29,16 +29,84 @@ from share_verify import (
 
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
+
+# Load every place Render / local can stash secrets. Never crash if a file is missing.
+for _env_path in (
+    ROOT_DIR / ".env",
+    ROOT_DIR / "atlas-credentials.env",
+    Path("/etc/secrets/.env"),
+    Path("/etc/secrets/atlas-credentials.env"),
+    Path("/etc/secrets/atlas-credentials"),
+):
+    if _env_path.is_file():
+        load_dotenv(_env_path, override=False)
+
+# Render secret files are sometimes one file per variable
+_secrets = Path("/etc/secrets")
+if _secrets.is_dir():
+    for _f in _secrets.iterdir():
+        if _f.is_file() and _f.name in {
+            "MONGO_URL", "MONGODB_URI", "MONGODB_USERNAME", "MONGODB_PASSWORD", "DB_NAME",
+        } and not os.environ.get(_f.name):
+            os.environ[_f.name] = _f.read_text(encoding="utf-8").strip().strip('"').strip("'")
 
 # ---------------------------------------------------------------------
 # Environment / DB
 # ---------------------------------------------------------------------
-mongo_url = os.environ.get("MONGO_URL")
-db_name = os.environ.get("DB_NAME")
-if not mongo_url or not db_name:
-    raise RuntimeError("Set MONGO_URL and DB_NAME on the host (Render Environment).")
-client = AsyncIOMotorClient(mongo_url)
+# Public Atlas hostname for this project (not a secret). Used if only user/pass are set.
+DEFAULT_ATLAS_HOST = "frshboard.15rissw.mongodb.net"
+
+
+def _env(name: str, default: str = "") -> str:
+    raw = os.environ.get(name, default) or default
+    return str(raw).strip().strip('"').strip("'")
+
+
+def _mongo_url() -> str:
+    """Always return a mongodb:// URI. Missing env → local placeholder so gunicorn still boots."""
+    raw = _env("MONGO_URL") or _env("MONGODB_URI")
+    if raw.lower().startswith("mongo_url="):
+        raw = raw.split("=", 1)[1].strip().strip('"').strip("'")
+    user = _env("MONGODB_USERNAME")
+    password = _env("MONGODB_PASSWORD")
+
+    host_only = DEFAULT_ATLAS_HOST
+    if raw:
+        host_part = raw.split("://", 1)[-1]
+        if "@" in host_part:
+            host_part = host_part.split("@", 1)[1]
+        host_part = host_part.split("?")[0].rstrip("/")
+        host_only = host_part.split("/")[0] or DEFAULT_ATLAS_HOST
+
+    atlas = "mongodb.net" in host_only
+    scheme = "mongodb+srv" if atlas else ("mongodb+srv" if raw.startswith("mongodb+srv://") else "mongodb")
+
+    if user and password:
+        url = f"{scheme}://{quote_plus(user)}:{quote_plus(password)}@{host_only}"
+    elif raw.startswith(("mongodb://", "mongodb+srv://")):
+        url = raw.split("?")[0]
+        if "@" in url and "://" in url:
+            creds, host = url.split("@", 1)
+            kind, rest = creds.split("://", 1)
+            if ":" in rest:
+                u, p = rest.split(":", 1)
+                url = f"{kind}://{quote_plus(u)}:{quote_plus(p)}@{host.split('/')[0]}"
+    else:
+        logging.error(
+            "No Mongo credentials found. Set MONGODB_USERNAME and MONGODB_PASSWORD on Render. "
+            "Booting anyway so /health stays up."
+        )
+        return "mongodb://127.0.0.1:27017"
+
+    q = ["retryWrites=true", "w=majority"]
+    if atlas:
+        q.append("authSource=admin")
+    return url + "?" + "&".join(q)
+
+
+mongo_url = _mongo_url()
+db_name = _env("DB_NAME") or "freshboard"
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=8000)
 db = client[db_name]
 
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
@@ -1084,15 +1152,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 @app.on_event("startup")
 async def ensure_share_indexes():
     """listings, share_intents, share_events, share_hits — the share-to-rank store."""
-    await db.listings.create_index([("created_at_iso", 1), ("current_bid", -1)])
-    await db.listings.create_index([("title", 1)])
-    await db.share_intents.create_index("token", unique=True)
-    await db.share_intents.create_index([("ip", 1), ("created_at", -1)])
-    await db.share_intents.create_index([("listing_id", 1), ("status", 1)])
-    await db.share_events.create_index([("listing_id", 1), ("target", 1), ("ip", 1)])
-    await db.share_events.create_index("post_url_norm", unique=True, sparse=True)
-    await db.share_events.create_index("token", sparse=True)
-    await db.share_hits.create_index([("token", 1), ("created_at", -1)])
+    try:
+        await db.command("ping")
+        await db.listings.create_index([("created_at_iso", 1), ("current_bid", -1)])
+        await db.listings.create_index([("title", 1)])
+        await db.share_intents.create_index("token", unique=True)
+        await db.share_intents.create_index([("ip", 1), ("created_at", -1)])
+        await db.share_intents.create_index([("listing_id", 1), ("status", 1)])
+        await db.share_events.create_index([("listing_id", 1), ("target", 1), ("ip", 1)])
+        await db.share_events.create_index("post_url_norm", unique=True, sparse=True)
+        await db.share_events.create_index("token", sparse=True)
+        await db.share_hits.create_index([("token", 1), ("created_at", -1)])
+    except Exception as e:
+        logging.error("MongoDB startup failed (API is up; board routes need a valid Atlas user): %s", e)
 
 
 @app.on_event("shutdown")
