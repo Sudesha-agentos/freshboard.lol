@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchTopToday } from "../lib/api";
+import { hostnameOf } from "../lib/format";
 import { Rocket, ArrowUpRight, Flame, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import useBoardSocket from "../lib/useBoardSocket";
@@ -79,7 +80,7 @@ export default function ProductHero({ onLaunch }) {
           rel="noreferrer noopener"
           className="fb-btn-primary inline-flex items-center gap-2"
         >
-          Open {new URL(top.url).hostname.replace(/^www\./, "")} <ArrowUpRight size={14} />
+          Open {hostnameOf(top.url) || "site"} <ArrowUpRight size={14} />
         </a>
         <ShareMenu listing={top} credits={credits}>
           <button

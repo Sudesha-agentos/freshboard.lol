@@ -22,6 +22,7 @@ html, body, #root {
   background: var(--fb-bg);
   color: var(--fb-text);
   min-height: 100%;
+  color-scheme: dark;
 }
 
 body {

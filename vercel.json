@@ -1,0 +1,8 @@
+{
+  "installCommand": "npm install --prefix frontend --legacy-peer-deps",
+  "buildCommand": "CI=false npm run build --prefix frontend",
+  "outputDirectory": "frontend/build",
+  "rewrites": [
+    { "source": "/((?!static/).*)", "destination": "/index.html" }
+  ]
+}
