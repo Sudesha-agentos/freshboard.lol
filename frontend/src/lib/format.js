@@ -22,3 +22,13 @@ export function moneyInt(n) {
   const v = Math.round(Number(n || 0));
   return v.toLocaleString("en-US");
 }
+
+export function hostnameOf(url) {
+  if (!url) return "";
+  try {
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    return new URL(href).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}

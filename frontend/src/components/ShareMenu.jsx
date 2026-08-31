@@ -252,7 +252,7 @@ export default function ShareMenu({ listing, credits, onCredited, children }) {
         {children}
       </DialogTrigger>
       <DialogContent
-        data-testid={`share-menu-${listing.id}`}
+        data-testid={`share-menu-${listing?.id || "pick"}`}
         className="bg-[color:var(--fb-surface)] border border-[color:var(--fb-border)] text-white w-[calc(100vw-1.5rem)] max-w-md rounded-none max-h-[90vh] overflow-y-auto p-4 sm:p-6"
       >
         <DialogHeader>
@@ -356,7 +356,7 @@ export default function ShareMenu({ listing, credits, onCredited, children }) {
                       key={t.key}
                       type="button"
                       onClick={() => pickTarget(t.key)}
-                      data-testid={`share-${t.key}-${listing.id}`}
+                      data-testid={`share-${t.key}-${listing?.id || company.id}`}
                       className={`fb-btn-ghost text-[11px] px-3 py-2 inline-flex items-center gap-2 ${on ? "!border-[color:var(--fb-cyan)] !text-[color:var(--fb-cyan)]" : ""}`}
                     >
                       <Icon size={14} className={on ? "text-[color:var(--fb-cyan)]" : t.color} />

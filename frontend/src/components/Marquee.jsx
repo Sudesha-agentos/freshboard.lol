@@ -1,11 +1,12 @@
 export default function Marquee({ items }) {
   const list = items && items.length ? items : [
-    "FRESHBOARD.LOL",
-    "RANK IS SHARED, NOT VOTED",
-    "FREE TO LIST",
-    "+5 CREDITS PER SHARE",
+    "PUBLISH YOUR APP HERE",
+    "GET TOP VISIBILITY",
+    "FREE TO LIST — SHARE TO CLIMB",
+    "HIGHEST CREDITS STAY ON TOP",
+    "+5 CREDITS PER VERIFIED SHARE",
     "BOARD RESETS MIDNIGHT IST",
-    "SHARE TO CLIMB",
+    "FRESHBOARD.LOL",
   ];
   const loop = [...list, ...list];
   return (

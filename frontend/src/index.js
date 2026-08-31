@@ -24,11 +24,18 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{ color: "#f8fafc", padding: 24, fontFamily: "monospace" }}>
+        <div style={{ color: "#f8fafc", padding: 24, fontFamily: "monospace", minHeight: "100vh", background: "#050505" }}>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>FreshBoard failed to load.</div>
           <pre style={{ whiteSpace: "pre-wrap", color: "#f472b6" }}>
             {String(this.state.error?.message || this.state.error)}
           </pre>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 16, padding: "10px 16px", background: "#ec4899", color: "#050505", border: 0, fontWeight: 700, cursor: "pointer" }}
+          >
+            Reload
+          </button>
         </div>
       );
     }

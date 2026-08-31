@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { fetchListing, trackClick } from "../lib/api";
-import { timeAgo } from "../lib/format";
+import { timeAgo, hostnameOf } from "../lib/format";
 import { ArrowLeft, ArrowUpRight, Sparkles, Zap, MousePointerClick, Loader2 } from "lucide-react";
 import Marquee from "../components/Marquee";
 import Countdown from "../components/Countdown";
@@ -102,7 +102,7 @@ export default function ProductDetail() {
               data-testid="detail-visit-link"
               className="fb-btn-ghost inline-flex items-center gap-2 mt-6"
             >
-              Visit {new URL(item.url).hostname.replace(/^www\./, "")} <ArrowUpRight size={16} />
+              Visit {hostnameOf(item.url) || "site"} <ArrowUpRight size={16} />
             </a>
           </div>
 
