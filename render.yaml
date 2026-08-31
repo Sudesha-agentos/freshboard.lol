@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: gunicorn your_application.wsgi
+    startCommand: bash backend/start.sh
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.10
