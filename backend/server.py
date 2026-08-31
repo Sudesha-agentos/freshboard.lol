@@ -27,10 +27,6 @@ from share_verify import (
     verify_post,
 )
 
-from emergentintegrations.payments.stripe.checkout import (
-    StripeCheckout,
-    CheckoutSessionRequest,
-)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -42,7 +38,7 @@ mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 
-STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 
 # IST timezone (UTC+5:30)
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -546,10 +542,8 @@ async def ws_board(ws: WebSocket):
         await ws_manager.disconnect(ws)
 
 
-def _stripe_from_request(request: Request) -> StripeCheckout:
-    host_url = str(request.base_url)
-    webhook_url = f"{host_url}api/webhook/stripe"
-    return StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
+def _payments_disabled():
+    raise HTTPException(503, "Card payments are not enabled. Share to earn credits.")
 
 
 async def _create_checkout(
@@ -559,29 +553,7 @@ async def _create_checkout(
     origin_url: str,
     metadata: dict,
 ) -> dict:
-    stripe_checkout = _stripe_from_request(request)
-    success_url = f"{origin_url.rstrip('/')}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{origin_url.rstrip('/')}/payment/cancel"
-    req = CheckoutSessionRequest(
-        amount=float(round(amount, 2)),
-        currency="usd",
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={**metadata, "purpose": purpose},
-    )
-    session = await stripe_checkout.create_checkout_session(req)
-    await db.payment_transactions.insert_one({
-        "session_id": session.session_id,
-        "amount": float(round(amount, 2)),
-        "currency": "usd",
-        "purpose": purpose,
-        "status": "initiated",
-        "payment_status": "pending",
-        "metadata": metadata,
-        "created_at": now_iso(),
-        "updated_at": now_iso(),
-    })
-    return {"checkout_url": session.url, "session_id": session.session_id}
+    _payments_disabled()
 
 
 @api.post("/submit")
@@ -1066,15 +1038,8 @@ async def payment_status(session_id: str, request: Request):
     record = await db.payment_transactions.find_one({"session_id": session_id})
     if not record:
         raise HTTPException(404, "Transaction not found")
-    if record.get("payment_status") != "paid":
-        try:
-            stripe_checkout = _stripe_from_request(request)
-            status = await stripe_checkout.get_checkout_status(session_id)
-            if status.payment_status == "paid" or status.status == "complete":
-                await _apply_paid_transaction(session_id, dict(status.metadata or {}))
-                record = await db.payment_transactions.find_one({"session_id": session_id})
-        except Exception as e:
-            logging.exception("Stripe status poll failed: %s", e)
+    if record.get("payment_status") != "paid" and STRIPE_API_KEY:
+        logging.info("Stripe status poll skipped — payments package not installed")
     return {
         "session_id": record["session_id"],
         "status": record.get("status"),
@@ -1087,17 +1052,7 @@ async def payment_status(session_id: str, request: Request):
 
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):
-    body = await request.body()
-    sig = request.headers.get("Stripe-Signature", "")
-    try:
-        stripe_checkout = _stripe_from_request(request)
-        event = await stripe_checkout.handle_webhook(body, sig)
-    except Exception as e:
-        logging.exception("Webhook error: %s", e)
-        raise HTTPException(400, "Invalid webhook")
-    if event.payment_status == "paid":
-        await _apply_paid_transaction(event.session_id, dict(event.metadata or {}))
-    return {"status": "ok"}
+    _payments_disabled()
 
 
 # ---------------------------------------------------------------------
