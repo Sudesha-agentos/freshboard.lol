@@ -10,7 +10,7 @@ export default function StatsBar() {
     const load = async () => {
       try {
         const s = await fetchStats();
-        if (alive) setStats(s);
+        if (alive && s && typeof s === "object") setStats(s);
       } catch { /* ignore */ }
     };
     load();

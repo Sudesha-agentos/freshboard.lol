@@ -11,7 +11,9 @@ export default function Countdown({ variant = "hero" }) {
     const sync = async () => {
       try {
         const info = await fetchResetInfo();
-        if (alive) setSeconds(info.seconds_until_reset);
+        if (alive && Number.isFinite(Number(info?.seconds_until_reset))) {
+          setSeconds(Number(info.seconds_until_reset));
+        }
       } catch { /* ignore */ }
     };
     sync();

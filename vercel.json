@@ -3,6 +3,6 @@
   "buildCommand": "CI=false npm run build --prefix frontend",
   "outputDirectory": "frontend/build",
   "rewrites": [
-    { "source": "/((?!static/).*)", "destination": "/index.html" }
+    { "source": "/((?!static/|api/).*)", "destination": "/index.html" }
   ]
 }

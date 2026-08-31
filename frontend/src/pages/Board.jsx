@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { fetchBoard, fetchConfig } from "../lib/api";
+import { fetchBoard, fetchConfig, asBoard, asConfig } from "../lib/api";
 import Countdown from "../components/Countdown";
 import Marquee from "../components/Marquee";
 import ListingCard from "../components/ListingCard";
@@ -23,14 +23,13 @@ export default function Board() {
   const load = useCallback(async (spin = false) => {
     if (spin) setRefreshing(true);
     try {
-      const data = await fetchBoard(category === "All" ? null : category);
-      setBoard(data);
+      setBoard(asBoard(await fetchBoard(category === "All" ? null : category)));
     } catch { /* ignore */ }
     finally { if (spin) setTimeout(() => setRefreshing(false), 400); }
   }, [category]);
 
   useEffect(() => {
-    fetchConfig().then(setConfig).catch(() => {});
+    fetchConfig().then((d) => setConfig(asConfig(d))).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -47,7 +46,7 @@ export default function Board() {
   const handleCredited = (listingId, newCredits) => {
     setBoard(b => {
       const now = new Date().toISOString();
-      const bump = (arr) => arr
+      const bump = (arr) => (Array.isArray(arr) ? arr : [])
         .map(it => it.id === listingId ? { ...it, current_bid: newCredits, last_bid_at_iso: now } : it)
         .sort((a, c) => (Number(c.current_bid) - Number(a.current_bid)) || String(c.last_bid_at_iso || "").localeCompare(String(a.last_bid_at_iso || "")))
         .map((it, i) => ({ ...it, rank: i + 1 }));
@@ -99,14 +98,14 @@ export default function Board() {
                     data-testid="tab-products"
                     className="flex-1 sm:flex-none rounded-none font-mono text-[10px] sm:text-xs uppercase tracking-widest px-3 sm:px-6 py-2 sm:py-3 data-[state=active]:bg-[color:var(--fb-pink)] data-[state=active]:text-black"
                   >
-                    Products · {board.products.length}
+                    Products · {(board.products || []).length}
                   </TabsTrigger>
                   <TabsTrigger
                     value="social"
                     data-testid="tab-socials"
                     className="flex-1 sm:flex-none rounded-none font-mono text-[10px] sm:text-xs uppercase tracking-widest px-3 sm:px-6 py-2 sm:py-3 data-[state=active]:bg-[color:var(--fb-cyan)] data-[state=active]:text-black"
                   >
-                    Socials · {board.socials.length}
+                    Socials · {(board.socials || []).length}
                   </TabsTrigger>
                 </TabsList>
                 <button
@@ -123,7 +122,7 @@ export default function Board() {
               {tab === "product" && (
                 <div className="mb-4 md:mb-6">
                   <div data-testid="category-chips" className="flex items-center gap-2 flex-wrap">
-                    {["All", ...config.categories].map(c => (
+                    {["All", ...(config.categories || [])].map(c => (
                       <button
                         key={c}
                         data-testid={`cat-${c}`}
@@ -138,10 +137,10 @@ export default function Board() {
               )}
 
               <TabsContent value="product" className="mt-0">
-                <ListGrid items={board.products} onCredited={handleCredited} emptyType="product" onSubmit={() => openSubmit("product")} />
+                <ListGrid items={board.products || []} onCredited={handleCredited} emptyType="product" onSubmit={() => openSubmit("product")} />
               </TabsContent>
               <TabsContent value="social" className="mt-0">
-                <ListGrid items={board.socials} onCredited={handleCredited} emptyType="social" onSubmit={() => openSubmit("social")} />
+                <ListGrid items={board.socials || []} onCredited={handleCredited} emptyType="social" onSubmit={() => openSubmit("social")} />
               </TabsContent>
             </Tabs>
           </div>
@@ -173,7 +172,8 @@ export default function Board() {
 }
 
 function ListGrid({ items, onCredited, emptyType, onSubmit }) {
-  if (!items.length) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
     return (
       <div data-testid={`empty-${emptyType}`} className="border border-dashed border-[color:var(--fb-border)] p-8 md:p-12 text-center">
         <div className="font-display text-2xl sm:text-3xl md:text-4xl font-black text-white mb-2">
@@ -190,7 +190,7 @@ function ListGrid({ items, onCredited, emptyType, onSubmit }) {
   }
   return (
     <div className="space-y-3">
-      {items.map(it => (
+      {list.map(it => (
         <ListingCard key={it.id} item={it} onCredited={onCredited} />
       ))}
     </div>
