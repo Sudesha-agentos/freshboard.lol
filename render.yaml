@@ -2,6 +2,15 @@ services:
   - type: web
     name: freshboard-api
     runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn your_application.wsgi
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://www.freshboard.lol,https://freshboard.lol
