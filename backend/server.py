@@ -34,9 +34,12 @@ load_dotenv(ROOT_DIR / ".env")
 # ---------------------------------------------------------------------
 # Environment / DB
 # ---------------------------------------------------------------------
-mongo_url = os.environ["MONGO_URL"]
+mongo_url = os.environ.get("MONGO_URL")
+db_name = os.environ.get("DB_NAME")
+if not mongo_url or not db_name:
+    raise RuntimeError("Set MONGO_URL and DB_NAME on the host (Render Environment).")
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+db = client[db_name]
 
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 
@@ -167,6 +170,12 @@ def client_ip(request: Request) -> str:
 # ---------------------------------------------------------------------
 app = FastAPI(title="FreshBoard.lol API")
 api = APIRouter(prefix="/api")
+
+
+@app.get("/")
+@app.get("/health")
+async def health():
+    return {"service": "FreshBoard.lol", "status": "ok"}
 
 
 @api.get("/")
@@ -1060,10 +1069,11 @@ async def stripe_webhook(request: Request):
 # ---------------------------------------------------------------------
 app.include_router(api)
 
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_credentials="*" not in _cors_origins,
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
